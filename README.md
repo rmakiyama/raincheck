@@ -68,6 +68,14 @@ The numbers under each article are Jev's answers. See [Questions](#questions) fo
 | `--collection=ID` | which Raindrop collection to fetch. `0` = all, `-1` = Unsorted (default 0). Negative ids need the `=` form |
 | `--concurrency N` | how many Jev requests to run in parallel (default 10) |
 
+### Defaults
+
+Any flag except `--jsonl` can have its default set in `~/.config/raincheck/config.json`. A flag on the command line still wins.
+
+```json
+{ "days": 14, "top": 5 }
+```
+
 ## State
 
 A request to Jev consists of state (the evidence) and questions. The state has two parts.

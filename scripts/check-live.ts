@@ -5,17 +5,17 @@
 // fields (and whether `highlights` is inlined), and a single Jev call with our
 // real questions returns the expected answer shapes.
 
-import { loadConfig, resolveSecret } from '../src/config.ts'
+import { loadCredentials, resolveSecret } from '../src/config.ts'
 import { createClaudeSessionsInterestSource } from '../src/interests/claude-sessions.ts'
 import { createJevClient } from '../src/jev/client.ts'
 import { JEV_MODEL, QUESTIONS, buildState } from '../src/questions.ts'
 import { createRaindropSource } from '../src/raindrop/source.ts'
 
-const config = await loadConfig({ warn: console.warn })
-const apiKey = resolveSecret('TYPESAFE_API_KEY', config.typesafeApiKey)
-const token = resolveSecret('RAINDROP_TOKEN', config.raindropToken)
+const credentials = await loadCredentials({ warn: console.warn })
+const apiKey = resolveSecret('TYPESAFE_API_KEY', credentials.typesafeApiKey)
+const token = resolveSecret('RAINDROP_TOKEN', credentials.raindropToken)
 if (!apiKey || !token) {
-  console.error('set TYPESAFE_API_KEY and RAINDROP_TOKEN, or write ~/.config/raincheck/config.json')
+  console.error('set TYPESAFE_API_KEY and RAINDROP_TOKEN, or write ~/.config/raincheck/credentials.json')
   process.exit(2)
 }
 

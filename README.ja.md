@@ -68,6 +68,14 @@ judged 24, surfaced 3, failed 0, tokens in=95210 out=1150
 | `--collection=ID` | 取得する Raindrop のコレクション。`0` = 全件、`-1` = Unsorted（既定 0）。負の ID は `=` で指定 |
 | `--concurrency N` | Jev へのリクエストの並列数（既定 10）                                        |
 
+### 既定値
+
+`--jsonl` 以外のフラグは `~/.config/raincheck/config.json` で既定値を変えられます。コマンドラインのフラグが優先です。
+
+```json
+{ "days": 14, "top": 5 }
+```
+
 ## State
 
 Jev へのリクエストは state（判定材料）と questions（質問）からなります。state は次の 2 つです。

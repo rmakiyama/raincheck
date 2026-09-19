@@ -1,6 +1,6 @@
 import { chmod, mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { loadConfig, type Config } from './config.ts'
+import { loadCredentials, type Credentials } from './config.ts'
 import type { FetchLike } from './types.ts'
 
 /** The I/O `configure` depends on, injected as one object. */
@@ -10,7 +10,7 @@ export type ConfigureIO = {
   promptSecret(label: string): Promise<string>
   print(line: string): void
   fetch: FetchLike
-  /** Config file to write. */
+  /** Credentials file to write. */
   path: string
 }
 
@@ -34,7 +34,7 @@ export async function configure(io: ConfigureIO): Promise<void> {
     )
   }
 
-  const existing = await loadConfig({ path: io.path, warn: (m) => io.print(`warning: ${m}`) })
+  const existing = await loadCredentials({ path: io.path, warn: (m) => io.print(`warning: ${m}`) })
   io.print(`Writing ${io.path}. Leave a field blank to keep its current value.`)
 
   const typesafeApiKey = await ask(io, 'TypeSafe API key', existing.typesafeApiKey)
@@ -44,7 +44,7 @@ export async function configure(io: ConfigureIO): Promise<void> {
   const who = await verifyRaindrop(io, raindropToken)
   io.print(`  ok${who ? ` (${who})` : ''}`)
 
-  await writeConfig(io.path, { typesafeApiKey, raindropToken })
+  await writeCredentials(io.path, { typesafeApiKey, raindropToken })
   io.print(`saved ${io.path} (0600)`)
 }
 
@@ -81,10 +81,10 @@ async function verifyRaindrop(io: ConfigureIO, token: string): Promise<string | 
 }
 
 /** Writes the file with mode 0600, creating parent directories with 0700. */
-export async function writeConfig(path: string, config: Required<Config>): Promise<void> {
+export async function writeCredentials(path: string, credentials: Required<Credentials>): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 })
   const body = JSON.stringify(
-    { typesafe_api_key: config.typesafeApiKey, raindrop_token: config.raindropToken },
+    { typesafe_api_key: credentials.typesafeApiKey, raindrop_token: credentials.raindropToken },
     null,
     2,
   )

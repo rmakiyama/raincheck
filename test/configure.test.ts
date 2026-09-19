@@ -10,7 +10,7 @@ describe('configure', () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'raincheck-configure-'))
-    path = join(dir, 'nested', 'config.json') // nested: exercises mkdir -p
+    path = join(dir, 'nested', 'credentials.json') // nested: exercises mkdir -p
   })
   afterEach(() => rm(dir, { recursive: true, force: true }))
 

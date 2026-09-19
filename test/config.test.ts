@@ -2,19 +2,107 @@ import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { defaultConfigPath, loadConfig, resolveSecret } from '../src/config.ts'
+import {
+  defaultConfigPath,
+  defaultCredentialsPath,
+  loadConfig,
+  loadCredentials,
+  OPTIONS,
+  resolveSecret,
+} from '../src/config.ts'
 
-describe('defaultConfigPath', () => {
-  it('honours XDG_CONFIG_HOME', () => {
+describe('default paths', () => {
+  it('honour XDG_CONFIG_HOME', () => {
+    expect(defaultCredentialsPath({ XDG_CONFIG_HOME: '/x' })).toBe('/x/raincheck/credentials.json')
     expect(defaultConfigPath({ XDG_CONFIG_HOME: '/x' })).toBe('/x/raincheck/config.json')
   })
 
-  it('falls back to ~/.config', () => {
+  it('fall back to ~/.config', () => {
+    expect(defaultCredentialsPath({})).toMatch(/\/\.config\/raincheck\/credentials\.json$/)
     expect(defaultConfigPath({})).toMatch(/\/\.config\/raincheck\/config\.json$/)
   })
 })
 
+describe('OPTIONS', () => {
+  it('holds integers to their minimum', () => {
+    expect(OPTIONS.days.accepts(1)).toBe(true)
+    expect(OPTIONS.days.accepts(0)).toBe(false)
+    expect(OPTIONS.days.accepts(1.5)).toBe(false)
+    expect(OPTIONS.top.accepts(0)).toBe(true)
+    expect(OPTIONS.collection.accepts(-1)).toBe(true)
+    expect(OPTIONS.collection.accepts(NaN)).toBe(false)
+  })
+
+  it('holds threshold to the unit interval', () => {
+    expect(OPTIONS.threshold.accepts(0)).toBe(true)
+    expect(OPTIONS.threshold.accepts(0.6)).toBe(true)
+    expect(OPTIONS.threshold.accepts(1)).toBe(true)
+    expect(OPTIONS.threshold.accepts(1.01)).toBe(false)
+    expect(OPTIONS.threshold.accepts(NaN)).toBe(false)
+  })
+})
+
 describe('loadConfig', () => {
+  let dir: string
+  let path: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'raincheck-'))
+    path = join(dir, 'config.json')
+  })
+  afterEach(() => rm(dir, { recursive: true, force: true }))
+
+  const write = (body: string) => writeFile(path, body)
+
+  it('returns {} when the file does not exist', async () => {
+    expect(await loadConfig({ path })).toEqual({})
+  })
+
+  it('reads every option', async () => {
+    await write('{"days":14,"limit":50,"top":5,"threshold":0.5,"collection":-1,"concurrency":2}')
+    expect(await loadConfig({ path })).toEqual({
+      days: 14,
+      limit: 50,
+      top: 5,
+      threshold: 0.5,
+      collection: -1,
+      concurrency: 2,
+    })
+  })
+
+  it('leaves absent keys undefined and ignores unknown ones', async () => {
+    await write('{"top":5,"jsonl":true,"future":1}')
+    expect(await loadConfig({ path })).toEqual({ top: 5 })
+  })
+
+  it('rejects values the flag would reject, naming the key', async () => {
+    await write('{"days":0}')
+    await expect(loadConfig({ path })).rejects.toThrow(`${path}: "days" must be an integer >= 1`)
+    await write('{"threshold":2}')
+    await expect(loadConfig({ path })).rejects.toThrow('"threshold" must be a number between 0 and 1')
+    await write('{"collection":1.5}')
+    await expect(loadConfig({ path })).rejects.toThrow('"collection" must be an integer')
+  })
+
+  it('rejects strings even when numeric', async () => {
+    await write('{"days":"7"}')
+    await expect(loadConfig({ path })).rejects.toThrow('"days" must be an integer >= 1')
+  })
+
+  it('rejects a credential, pointing at credentials.json', async () => {
+    await write('{"days":7,"typesafe_api_key":"k"}')
+    await expect(loadConfig({ path })).rejects.toThrow(
+      `${path}: "typesafe_api_key" is a secret; move it to ${join(dir, 'credentials.json')}`,
+    )
+  })
+
+  it('rejects invalid JSON with the path in the message', async () => {
+    await write('{oops')
+    await expect(loadConfig({ path })).rejects.toThrow(`${path}: not valid JSON`)
+  })
+})
+
+describe('loadCredentials', () => {
   let dir: string
   let path: string
   const warnings: string[] = []
@@ -22,7 +110,7 @@ describe('loadConfig', () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'raincheck-'))
-    path = join(dir, 'config.json')
+    path = join(dir, 'credentials.json')
     warnings.length = 0
   })
   afterEach(() => rm(dir, { recursive: true, force: true }))
@@ -33,24 +121,24 @@ describe('loadConfig', () => {
   }
 
   it('returns {} when the file does not exist', async () => {
-    expect(await loadConfig({ path, warn })).toEqual({})
+    expect(await loadCredentials({ path, warn })).toEqual({})
     expect(warnings).toEqual([])
   })
 
   it('reads both keys', async () => {
     await write('{"typesafe_api_key":"k","raindrop_token":"t"}')
-    expect(await loadConfig({ path, warn })).toEqual({ typesafeApiKey: 'k', raindropToken: 't' })
+    expect(await loadCredentials({ path, warn })).toEqual({ typesafeApiKey: 'k', raindropToken: 't' })
     expect(warnings).toEqual([])
   })
 
   it('leaves absent keys undefined and ignores unknown ones', async () => {
     await write('{"raindrop_token":"t","future":1}')
-    expect(await loadConfig({ path, warn })).toEqual({ raindropToken: 't' })
+    expect(await loadCredentials({ path, warn })).toEqual({ raindropToken: 't' })
   })
 
   it('warns when the file is readable by others', async () => {
     await write('{"raindrop_token":"t"}', 0o644)
-    await loadConfig({ path, warn })
+    await loadCredentials({ path, warn })
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toContain('chmod 600')
     expect(warnings[0]).toContain(path)
@@ -58,19 +146,19 @@ describe('loadConfig', () => {
 
   it('rejects invalid JSON with the path in the message', async () => {
     await write('{oops')
-    await expect(loadConfig({ path, warn })).rejects.toThrow(`${path}: not valid JSON`)
+    await expect(loadCredentials({ path, warn })).rejects.toThrow(`${path}: not valid JSON`)
   })
 
   it('rejects non-object documents', async () => {
     await write('["k"]')
-    await expect(loadConfig({ path, warn })).rejects.toThrow('expected a JSON object')
+    await expect(loadCredentials({ path, warn })).rejects.toThrow('expected a JSON object')
   })
 
   it('rejects empty or non-string values', async () => {
     await write('{"typesafe_api_key":""}')
-    await expect(loadConfig({ path, warn })).rejects.toThrow('"typesafe_api_key" must be a non-empty string')
+    await expect(loadCredentials({ path, warn })).rejects.toThrow('"typesafe_api_key" must be a non-empty string')
     await write('{"raindrop_token":42}')
-    await expect(loadConfig({ path, warn })).rejects.toThrow('"raindrop_token" must be a non-empty string')
+    await expect(loadCredentials({ path, warn })).rejects.toThrow('"raindrop_token" must be a non-empty string')
   })
 })
 

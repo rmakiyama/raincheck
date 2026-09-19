@@ -1,27 +1,100 @@
 import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
-/** Credentials read from the config file. Absent means "not in the file". */
-export type Config = {
+/** `$XDG_CONFIG_HOME/raincheck`, falling back to `~/.config/raincheck`. */
+export function configDir(env: NodeJS.ProcessEnv = process.env): string {
+  const base = env.XDG_CONFIG_HOME || join(homedir(), '.config')
+  return join(base, 'raincheck')
+}
+
+/** The secrets file, written by `raincheck configure` with mode 0600. */
+export function defaultCredentialsPath(env?: NodeJS.ProcessEnv): string {
+  return join(configDir(env), 'credentials.json')
+}
+
+/** The option defaults file, edited by hand. Holds nothing secret. */
+export function defaultConfigPath(env?: NodeJS.ProcessEnv): string {
+  return join(configDir(env), 'config.json')
+}
+
+type Rule = {
+  accepts(n: number): boolean
+  /** Completes "must be …" in error messages. */
+  expected: string
+}
+
+const integer = (min: number): Rule => ({
+  accepts: (n) => Number.isInteger(n) && n >= min,
+  expected: min > -Infinity ? `an integer >= ${min}` : 'an integer',
+})
+
+/**
+ * The options a person may tune, each with the one rule that both its flag
+ * and its config.json key are checked against, so the two cannot disagree.
+ */
+export const OPTIONS = {
+  days: integer(1),
+  limit: integer(0),
+  top: integer(0),
+  threshold: { accepts: (n) => n >= 0 && n <= 1, expected: 'a number between 0 and 1' },
+  collection: integer(-Infinity),
+  concurrency: integer(1),
+} satisfies Record<string, Rule>
+
+export type OptionName = keyof typeof OPTIONS
+
+/** Option defaults read from config.json. Absent means "not in the file". */
+export type Config = Partial<Record<OptionName, number>>
+
+/** Credentials read from credentials.json. Absent means "not in the file". */
+export type Credentials = {
   typesafeApiKey?: string
   raindropToken?: string
 }
 
 // File keys are snake_case to mirror the env var names they stand in for.
-const FILE_KEYS = {
+const CREDENTIAL_KEYS = {
   typesafe_api_key: 'typesafeApiKey',
   raindrop_token: 'raindropToken',
-} as const satisfies Record<string, keyof Config>
-
-/** `$XDG_CONFIG_HOME/raincheck/config.json`, falling back to `~/.config`. */
-export function defaultConfigPath(env: NodeJS.ProcessEnv = process.env): string {
-  const base = env.XDG_CONFIG_HOME || join(homedir(), '.config')
-  return join(base, 'raincheck', 'config.json')
-}
+} as const satisfies Record<string, keyof Credentials>
 
 export type LoadConfigOptions = {
   /** @default defaultConfigPath() */
+  path?: string
+}
+
+/**
+ * Reads the option defaults. A missing file resolves to `{}`; a present but
+ * malformed file rejects, so a typo cannot masquerade as "not configured".
+ * Each value is held to the same rule as its flag. A credential in this file
+ * rejects too: only credentials.json is kept at mode 0600.
+ */
+export async function loadConfig(opts: LoadConfigOptions = {}): Promise<Config> {
+  const path = opts.path ?? defaultConfigPath()
+  const parsed = await readObject(path)
+  if (parsed === undefined) return {}
+
+  for (const key of Object.keys(CREDENTIAL_KEYS)) {
+    if (parsed[key] !== undefined) {
+      throw new Error(`${path}: "${key}" is a secret; move it to ${join(dirname(path), 'credentials.json')}`)
+    }
+  }
+
+  const config: Config = {}
+  for (const name of Object.keys(OPTIONS) as OptionName[]) {
+    const value = parsed[name]
+    if (value === undefined) continue
+    if (typeof value !== 'number' || !OPTIONS[name].accepts(value)) {
+      throw new Error(`${path}: "${name}" must be ${OPTIONS[name].expected}`)
+    }
+    config[name] = value
+  }
+  return config
+}
+
+export type LoadCredentialsOptions = {
+  /** @default defaultCredentialsPath() */
   path?: string
   /** Receives non-fatal problems such as loose file permissions. */
   warn?: (msg: string) => void
@@ -33,22 +106,38 @@ export type LoadConfigOptions = {
  * The file is plaintext; on POSIX, a mode readable by group/other triggers
  * `warn` but does not reject.
  */
-export async function loadConfig(opts: LoadConfigOptions = {}): Promise<Config> {
-  const path = opts.path ?? defaultConfigPath()
-
-  let text: string
-  try {
-    text = await readFile(path, 'utf8')
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {}
-    throw err
-  }
+export async function loadCredentials(opts: LoadCredentialsOptions = {}): Promise<Credentials> {
+  const path = opts.path ?? defaultCredentialsPath()
+  const parsed = await readObject(path)
+  if (parsed === undefined) return {}
 
   if (process.platform !== 'win32') {
     const mode = (await stat(path)).mode & 0o777
     if (mode & 0o077) {
       opts.warn?.(`${path} is readable by others (mode ${mode.toString(8)}); run: chmod 600 ${path}`)
     }
+  }
+
+  const credentials: Credentials = {}
+  for (const [fileKey, key] of Object.entries(CREDENTIAL_KEYS)) {
+    const value = parsed[fileKey]
+    if (value === undefined) continue
+    if (typeof value !== 'string' || value === '') {
+      throw new Error(`${path}: "${fileKey}" must be a non-empty string`)
+    }
+    credentials[key] = value
+  }
+  return credentials
+}
+
+/** The file's JSON object, or `undefined` when the file does not exist. */
+async function readObject(path: string): Promise<Record<string, unknown> | undefined> {
+  let text: string
+  try {
+    text = await readFile(path, 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw err
   }
 
   let parsed: unknown
@@ -60,17 +149,7 @@ export async function loadConfig(opts: LoadConfigOptions = {}): Promise<Config> 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`${path}: expected a JSON object`)
   }
-
-  const config: Config = {}
-  for (const [fileKey, configKey] of Object.entries(FILE_KEYS)) {
-    const value = (parsed as Record<string, unknown>)[fileKey]
-    if (value === undefined) continue
-    if (typeof value !== 'string' || value === '') {
-      throw new Error(`${path}: "${fileKey}" must be a non-empty string`)
-    }
-    config[configKey] = value
-  }
-  return config
+  return parsed as Record<string, unknown>
 }
 
 /** The env var if set and non-empty, else the file value, else `undefined`. */

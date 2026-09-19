@@ -23,6 +23,7 @@ Node 24 runs the TypeScript source directly, so only erasable syntax is allowed 
 - Adapters (`raindrop/`, `jev/`, `interests/`, `sinks/`) never import each other. `cli.ts` assembles them.
 - `src/questions.ts` is the whole judgment policy: questions, state shape, threshold. Do not put thresholds or question text anywhere else.
 - `src/decide.ts` is pure. Keep it free of I/O and clocks.
+- `src/config.ts` owns both files under `~/.config/raincheck/`: `credentials.json` (secrets, 0600) and `config.json` (flag defaults). Its `OPTIONS` table is the one rule a flag and its `config.json` key are both checked against; a new tunable goes there, not into `cli.ts` alone.
 
 ## Constraints
 
@@ -31,7 +32,7 @@ Node 24 runs the TypeScript source directly, so only erasable syntax is allowed 
 - One Jev request per bookmark. Batching several bookmarks into one request was measured to flatten the relevance spread and break the ranking.
 - Jev does not count, compare dates, or summarize. That logic stays in code.
 - Question text is English; TypeSafe reports its best accuracy there. The state may be any language.
-- Credentials come from the environment or `~/.config/raincheck/config.json`, never from arguments or source.
+- Credentials come from the environment or `~/.config/raincheck/credentials.json`, never from arguments, source, or `config.json`.
 
 ## Conventions
 
