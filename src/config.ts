@@ -9,12 +9,12 @@ export function configDir(env: NodeJS.ProcessEnv = process.env): string {
   return join(base, 'raincheck')
 }
 
-/** The secrets file, written by `raincheck configure` with mode 0600. */
+/** The secrets file. Kept apart from config.json so only it needs mode 0600. */
 export function defaultCredentialsPath(env?: NodeJS.ProcessEnv): string {
   return join(configDir(env), 'credentials.json')
 }
 
-/** The option defaults file, edited by hand. Holds nothing secret. */
+/** The option defaults file. */
 export function defaultConfigPath(env?: NodeJS.ProcessEnv): string {
   return join(configDir(env), 'config.json')
 }
@@ -48,7 +48,7 @@ export type OptionName = keyof typeof OPTIONS
 /** Option defaults read from config.json. Absent means "not in the file". */
 export type Config = Partial<Record<OptionName, number>>
 
-/** Built-in defaults. config.json overrides these; a flag overrides both. */
+/** Built-in defaults. `limit` and `top` have none: unset means no cap. */
 export const DEFAULTS = {
   days: 7,
   threshold: DEFAULT_THRESHOLDS.relevant,
@@ -66,12 +66,12 @@ export type Options = {
   concurrency: number
 }
 
-/** A flag value that breaks its rule. The CLI reports it as a usage error. */
+/** A flag value that breaks its rule, distinguishable from any other failure. */
 export class OptionError extends Error {}
 
 /**
- * A flag wins over config.json, which wins over `DEFAULTS`. Flag values are
- * the raw command-line strings, held to the same rule as the file's keys.
+ * A flag wins over config.json, which wins over `DEFAULTS`. `flags` are the
+ * raw command-line strings; one that breaks its rule throws `OptionError`.
  */
 export function resolveOptions(flags: Partial<Record<OptionName, string>>, config: Config): Options {
   const flag = (name: OptionName): number | undefined => {
@@ -175,7 +175,6 @@ export async function loadCredentials(opts: LoadCredentialsOptions = {}): Promis
   return credentials
 }
 
-/** The file's JSON object, or `undefined` when the file does not exist. */
 async function readObject(path: string): Promise<Record<string, unknown> | undefined> {
   let text: string
   try {
