@@ -1,0 +1,38 @@
+{
+  "result": true,
+  "items": [
+    {
+      "_id": 1001,
+      "link": "https://example.com/compose-perf",
+      "title": "Stability in Jetpack Compose: what recomposes and why",
+      "excerpt": "A deep dive into stable/unstable types and how the compiler reasons about them.",
+      "note": "read before touching the list screen",
+      "tags": ["compose", "android"],
+      "domain": "example.com",
+      "created": "2026-09-10T08:00:00.000Z",
+      "highlights": [
+        { "_id": "h1", "text": "Strong skipping mode changes the default", "color": "yellow", "created": "2026-09-10T08:05:00.000Z" },
+        { "_id": "h2", "text": "   ", "color": "yellow", "created": "2026-09-10T08:06:00.000Z" }
+      ],
+      "cover": "https://example.com/cover.png",
+      "collection": { "$id": 0 },
+      "user": { "$id": 42 },
+      "type": "article"
+    },
+    {
+      "_id": 1002,
+      "link": "https://example.com/dead",
+      "title": "This link is gone",
+      "excerpt": "",
+      "broken": true,
+      "created": "2026-09-09T08:00:00.000Z"
+    },
+    {
+      "_id": 1003,
+      "link": "https://example.com/bare",
+      "title": "   ",
+      "created": "2026-09-08T08:00:00.000Z"
+    }
+  ],
+  "count": 3
+}

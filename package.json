@@ -1,0 +1,27 @@
+{
+  "name": "raincheck",
+  "version": "0.1.0",
+  "description": "the reading you put off. which ones are worth cashing in today.",
+  "private": true,
+  "license": "MIT",
+  "author": "rmakiyama",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "raincheck": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check:live": "node --no-warnings=ExperimentalWarning scripts/check-live.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
