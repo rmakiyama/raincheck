@@ -66,6 +66,7 @@ judged 24, surfaced 3, failed 0, tokens in=95210 out=1150
 | `--days N`        | Claude Code のセッションを遡る日数（既定 7）                                        |
 | `--jsonl`         | 出力を JSONL にする。閾値以下の記事も含み、確率をすべて持つ                                    |
 | `--collection=ID` | 取得する Raindrop のコレクション。`0` = 全件、`-1` = Unsorted（既定 0）。負の ID は `=` で指定 |
+| `--concurrency N` | Jev へのリクエストの並列数（既定 10）                                        |
 
 ## State
 

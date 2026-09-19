@@ -66,6 +66,7 @@ The numbers under each article are Jev's answers. See [Questions](#questions) fo
 | `--days N` | how many days of Claude Code sessions to look back (default 7) |
 | `--jsonl` | output as JSONL instead: every article, including those below the threshold, with all probabilities |
 | `--collection=ID` | which Raindrop collection to fetch. `0` = all, `-1` = Unsorted (default 0). Negative ids need the `=` form |
+| `--concurrency N` | how many Jev requests to run in parallel (default 10) |
 
 ## State
 
