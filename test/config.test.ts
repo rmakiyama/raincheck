@@ -3,11 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  DEFAULTS,
   defaultConfigPath,
   defaultCredentialsPath,
   loadConfig,
   loadCredentials,
+  OptionError,
   OPTIONS,
+  resolveOptions,
   resolveSecret,
 } from '../src/config.ts'
 
@@ -39,6 +42,34 @@ describe('OPTIONS', () => {
     expect(OPTIONS.threshold.accepts(1)).toBe(true)
     expect(OPTIONS.threshold.accepts(1.01)).toBe(false)
     expect(OPTIONS.threshold.accepts(NaN)).toBe(false)
+  })
+})
+
+describe('resolveOptions', () => {
+  it('uses the built-in defaults when nothing else is given', () => {
+    expect(resolveOptions({}, {})).toEqual(DEFAULTS)
+  })
+
+  it('takes config.json over the built-in defaults', () => {
+    expect(resolveOptions({}, { days: 14, top: 5 })).toEqual({ ...DEFAULTS, days: 14, top: 5 })
+  })
+
+  it('takes a flag over config.json', () => {
+    const resolved = resolveOptions({ days: '3', threshold: '0.8', collection: '-1' }, { days: 14, threshold: 0.5 })
+    expect(resolved).toMatchObject({ days: 3, threshold: 0.8, collection: -1 })
+  })
+
+  it('leaves limit and top unset when neither source has them', () => {
+    const resolved = resolveOptions({}, {})
+    expect(resolved.limit).toBeUndefined()
+    expect(resolved.top).toBeUndefined()
+  })
+
+  it('rejects a flag that breaks its rule, naming the flag', () => {
+    expect(() => resolveOptions({ days: '0' }, {})).toThrow(OptionError)
+    expect(() => resolveOptions({ days: '0' }, {})).toThrow('--days must be an integer >= 1')
+    expect(() => resolveOptions({ threshold: '0.5abc' }, {})).toThrow('--threshold must be a number between 0 and 1')
+    expect(() => resolveOptions({ top: '' }, {})).toThrow('--top must be an integer >= 0')
   })
 })
 

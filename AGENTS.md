@@ -23,7 +23,7 @@ Node 24 runs the TypeScript source directly, so only erasable syntax is allowed 
 - Adapters (`raindrop/`, `jev/`, `interests/`, `sinks/`) never import each other. `cli.ts` assembles them.
 - `src/questions.ts` is the whole judgment policy: questions, state shape, threshold. Do not put thresholds or question text anywhere else.
 - `src/decide.ts` is pure. Keep it free of I/O and clocks.
-- `src/config.ts` owns both files under `~/.config/raincheck/`: `credentials.json` (secrets, 0600) and `config.json` (flag defaults). Its `OPTIONS` table is the one rule a flag and its `config.json` key are both checked against; a new tunable goes there, not into `cli.ts` alone.
+- `src/config.ts` owns both files under `~/.config/raincheck/` (`credentials.json`: secrets, 0600; `config.json`: flag defaults) and the whole option pipeline: `OPTIONS` is the one rule a flag and its file key are both checked against, and `resolveOptions` merges flag > file > `DEFAULTS`. A new tunable goes there; `cli.ts` only passes `parseArgs` output through.
 
 ## Constraints
 

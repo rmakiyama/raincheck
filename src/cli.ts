@@ -2,28 +2,21 @@
 import { parseArgs } from 'node:util'
 import { configure, ConfigureError, promptSecretTTY } from './configure.ts'
 import {
+  DEFAULTS,
   defaultCredentialsPath,
   loadConfig,
   loadCredentials,
-  OPTIONS,
+  OptionError,
+  resolveOptions,
   resolveSecret,
-  type OptionName,
 } from './config.ts'
 import { createClaudeSessionsInterestSource } from './interests/claude-sessions.ts'
 import { createJevClient } from './jev/client.ts'
-import { DEFAULT_THRESHOLDS, JEV_MODEL } from './questions.ts'
+import { JEV_MODEL } from './questions.ts'
 import { createRaindropSource } from './raindrop/source.ts'
 import { run } from './run.ts'
 import { createJsonlSink } from './sinks/jsonl.ts'
 import { createStdoutSink } from './sinks/stdout.ts'
-
-/** Built-in defaults. config.json overrides these; a flag overrides both. */
-const DEFAULTS = {
-  days: 7,
-  threshold: DEFAULT_THRESHOLDS.relevant,
-  collection: 0,
-  concurrency: 10,
-}
 
 const USAGE = `raincheck — the reading you put off. which ones are worth cashing in today.
 
@@ -86,20 +79,13 @@ async function main(): Promise<number> {
     return 0
   }
 
-  const config = await loadConfig()
-  const days = flag('days', values.days) ?? config.days ?? DEFAULTS.days
-  const interests = createClaudeSessionsInterestSource({ days })
+  const options = resolveOptions(values, await loadConfig())
+  const interests = createClaudeSessionsInterestSource({ days: options.days })
 
   if (command === 'context') {
     process.stdout.write(await interests.load())
     return 0
   }
-
-  const limit = flag('limit', values.limit) ?? config.limit
-  const top = flag('top', values.top) ?? config.top
-  const threshold = flag('threshold', values.threshold) ?? config.threshold ?? DEFAULTS.threshold
-  const collectionId = flag('collection', values.collection) ?? config.collection ?? DEFAULTS.collection
-  const concurrency = flag('concurrency', values.concurrency) ?? config.concurrency ?? DEFAULTS.concurrency
 
   const credentials = await loadCredentials({
     warn: (msg) => process.stderr.write(`raincheck: warning: ${msg}\n`),
@@ -107,16 +93,18 @@ async function main(): Promise<number> {
   const apiKey = requireSecret('TYPESAFE_API_KEY', 'typesafe_api_key', credentials.typesafeApiKey)
   const token = requireSecret('RAINDROP_TOKEN', 'raindrop_token', credentials.raindropToken)
 
-  const sink = values.jsonl ? createJsonlSink(process.stdout) : createStdoutSink(process.stdout, { top })
+  const sink = values.jsonl
+    ? createJsonlSink(process.stdout)
+    : createStdoutSink(process.stdout, { top: options.top })
 
   const result = await run({
-    bookmarks: createRaindropSource({ token, collectionId }),
+    bookmarks: createRaindropSource({ token, collectionId: options.collection }),
     interests,
     jev: createJevClient({ apiKey, model: JEV_MODEL }),
     sink,
-    thresholds: { relevant: threshold },
-    limit,
-    concurrency,
+    thresholds: { relevant: options.threshold },
+    limit: options.limit,
+    concurrency: options.concurrency,
     onError: (bookmark, err) => {
       process.stderr.write(`! ${bookmark.id} ${bookmark.url}\n  ${describe(err)}\n`)
     },
@@ -140,15 +128,6 @@ function requireSecret(envName: string, fileKey: string, fileValue: string | und
   return v
 }
 
-/** A flag's value, held to the same rule as its config.json key. */
-function flag(name: OptionName, raw: string | undefined): number | undefined {
-  if (raw === undefined) return undefined
-  // Number('') is 0, which would let a bare `--top=` pass as a real value.
-  const n = raw.trim() === '' ? NaN : Number(raw)
-  if (!OPTIONS[name].accepts(n)) throw new UsageError(`--${name} must be ${OPTIONS[name].expected}`)
-  return n
-}
-
 function describe(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
@@ -160,6 +139,7 @@ try {
   process.stderr.write(`raincheck: ${describe(err)}\n`)
   const usage =
     err instanceof UsageError ||
+    err instanceof OptionError ||
     err instanceof ConfigureError ||
     Boolean((err as { code?: string })?.code?.startsWith('ERR_PARSE_ARGS'))
   process.exitCode = usage ? 2 : 1

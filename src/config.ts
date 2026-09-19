@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { DEFAULT_THRESHOLDS } from './questions.ts'
 
 /** `$XDG_CONFIG_HOME/raincheck`, falling back to `~/.config/raincheck`. */
 export function configDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -46,6 +47,50 @@ export type OptionName = keyof typeof OPTIONS
 
 /** Option defaults read from config.json. Absent means "not in the file". */
 export type Config = Partial<Record<OptionName, number>>
+
+/** Built-in defaults. config.json overrides these; a flag overrides both. */
+export const DEFAULTS = {
+  days: 7,
+  threshold: DEFAULT_THRESHOLDS.relevant,
+  collection: 0,
+  concurrency: 10,
+}
+
+/** What a run uses once flags, config.json, and `DEFAULTS` are merged. */
+export type Options = {
+  days: number
+  limit?: number
+  top?: number
+  threshold: number
+  collection: number
+  concurrency: number
+}
+
+/** A flag value that breaks its rule. The CLI reports it as a usage error. */
+export class OptionError extends Error {}
+
+/**
+ * A flag wins over config.json, which wins over `DEFAULTS`. Flag values are
+ * the raw command-line strings, held to the same rule as the file's keys.
+ */
+export function resolveOptions(flags: Partial<Record<OptionName, string>>, config: Config): Options {
+  const flag = (name: OptionName): number | undefined => {
+    const raw = flags[name]
+    if (raw === undefined) return undefined
+    // Number('') is 0, which would let a bare `--top=` pass as a real value.
+    const n = raw.trim() === '' ? NaN : Number(raw)
+    if (!OPTIONS[name].accepts(n)) throw new OptionError(`--${name} must be ${OPTIONS[name].expected}`)
+    return n
+  }
+  return {
+    days: flag('days') ?? config.days ?? DEFAULTS.days,
+    limit: flag('limit') ?? config.limit,
+    top: flag('top') ?? config.top,
+    threshold: flag('threshold') ?? config.threshold ?? DEFAULTS.threshold,
+    collection: flag('collection') ?? config.collection ?? DEFAULTS.collection,
+    concurrency: flag('concurrency') ?? config.concurrency ?? DEFAULTS.concurrency,
+  }
+}
 
 /** Credentials read from credentials.json. Absent means "not in the file". */
 export type Credentials = {
