@@ -77,16 +77,16 @@ async function main(): Promise<number> {
     return 0
   }
 
-  const config = await loadConfig({ warn: (msg) => process.stderr.write(`raincheck: warning: ${msg}\n`) })
-  const apiKey = requireSecret('TYPESAFE_API_KEY', 'typesafe_api_key', config.typesafeApiKey)
-  const token = requireSecret('RAINDROP_TOKEN', 'raindrop_token', config.raindropToken)
-
   const limit = optionalInt(values.limit, '--limit', 0)
   const top = optionalInt(values.top, '--top', 0)
   const collectionId = optionalInt(values.collection, '--collection', -Infinity)!
   const concurrency = optionalInt(values.concurrency, '--concurrency', 1)!
   const threshold = values.threshold ? parseFloat(values.threshold) : DEFAULT_THRESHOLDS.relevant
   if (!(threshold >= 0 && threshold <= 1)) throw new UsageError('--threshold must be between 0 and 1')
+
+  const config = await loadConfig({ warn: (msg) => process.stderr.write(`raincheck: warning: ${msg}\n`) })
+  const apiKey = requireSecret('TYPESAFE_API_KEY', 'typesafe_api_key', config.typesafeApiKey)
+  const token = requireSecret('RAINDROP_TOKEN', 'raindrop_token', config.raindropToken)
 
   const sink = values.jsonl ? createJsonlSink(process.stdout) : createStdoutSink(process.stdout, { top })
 
