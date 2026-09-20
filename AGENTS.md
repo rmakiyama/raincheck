@@ -7,10 +7,12 @@ CLI that judges Raindrop bookmarks against recent Claude Code sessions using Jev
 ```sh
 npm test             # unit tests; no network
 npm run typecheck    # tsc --noEmit; nothing checks types at run time
+npm run lint         # biome check: lint, format, import order; read-only
+npm run lint:fix     # biome check --write; safe fixes only
 npm run check:live   # hits the real Raindrop and TypeSafe APIs; needs credentials and costs money
 ```
 
-Run `npm test` and `npm run typecheck` before committing.
+Run `npm test`, `npm run typecheck`, and `npm run lint` before committing.
 
 ## Runtime
 
@@ -37,4 +39,5 @@ Node 24 runs the TypeScript source directly, so only erasable syntax is allowed 
 ## Conventions
 
 - Comments explain why, not what. Exported symbols get JSDoc; internals get `//` only where the reason is not visible in the code. No change history in comments.
+- Formatting and import order are Biome's (`biome.json`: defaults, spaces). Do not hand-format; run `npm run lint:fix`.
 - Commit messages: Conventional Commits, in English, one logical change per commit, tests passing at every commit.

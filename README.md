@@ -161,6 +161,8 @@ When the digest is at fault, read `raincheck context` and adjust `--days`, or na
 ```sh
 npm test             # unit tests
 npm run typecheck    # type check
+npm run lint         # Biome: lint, format check, import order
+npm run lint:fix     # apply the fixes Biome can make on its own
 npm run check:live   # one real call to each API
 ```
 

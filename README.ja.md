@@ -161,6 +161,8 @@ URL が digest に残ったプロンプトに出てくる記事は、すでに�
 ```sh
 npm test             # ユニットテスト
 npm run typecheck    # 型検査
+npm run lint         # Biome: lint、フォーマット検査、import の並び
+npm run lint:fix     # Biome が自動で直せるものを適用
 npm run check:live   # 各 API を 1 回ずつ実際に叩く
 ```
 
