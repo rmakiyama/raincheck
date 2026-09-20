@@ -3,7 +3,14 @@ import { homedir } from 'node:os'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createClaudeSessionsInterestSource, isPlumbing, projectName, redact } from '../src/interests/claude-sessions.ts'
+import {
+  createClaudeSessionsInterestSource,
+  isPlumbing,
+  projectName,
+  redact,
+  select,
+  type Session,
+} from '../src/interests/claude-sessions.ts'
 
 const NOW = Date.parse('2026-09-19T12:00:00Z')
 const DAY = 86_400_000
@@ -148,6 +155,38 @@ describe('createClaudeSessionsInterestSource', () => {
 
   it('returns [] cleanly when the projects dir does not exist', async () => {
     await expect(load({ dir: join(dir, 'nope') })).rejects.toThrow('no Claude Code sessions')
+  })
+})
+
+describe('select', () => {
+  const prompt = (text: string, daysAgo: number) => ({ at: NOW - daysAgo * DAY, text })
+  const session = (project: string, lastActivityDaysAgo: number, prompts: Session['prompts']): Session => ({
+    sessionId: project,
+    project,
+    lastActivity: NOW - lastActivityDaysAgo * DAY,
+    prompts,
+  })
+  // 50 chars each so budgets below count in whole prompts; words, not a run of
+  // one letter, or `redact` would treat the padding as a token.
+  const P = (tag: string) => `${tag} lorem ipsum dolor sit amet consectetur adipiscing elit`.slice(0, 50)
+  const opts = { days: 7, budgetChars: 500, maxPromptChars: 300, minPromptChars: 40 }
+
+  it('spends the budget newest-first across projects, most recent project first', () => {
+    const busy = session('busy', 1, Array.from({ length: 20 }, (_, i) => prompt(P(`busy${i}`), 1 + i / 100)))
+    const quiet = session('quiet', 3, [prompt(P('quiet0'), 3)])
+    const d = select([quiet, busy], opts)
+    expect(d.projects.map((p) => p.name)).toEqual(['busy', 'quiet'])
+    expect(d.projects[0]!.prompts).toHaveLength(10)
+    expect(d.projects[0]!.prompts[0]).toContain('busy0')
+    expect(d.projects[1]!.prompts).toHaveLength(0)
+  })
+
+  it('carries branches, session counts and redacted titles', () => {
+    const a = { ...session('repo', 1, [prompt(P('a'), 1)]), branch: 'main', title: 'Rotate ghp_abcdefghijklmnopqrstuvwxyz0123' }
+    const b = { ...session('repo', 2, []), branch: 'feat', title: 'Other' }
+    const [p] = select([a, b], opts).projects
+    expect(p).toMatchObject({ name: 'repo', branches: ['main', 'feat'], sessions: 2 })
+    expect(p!.titles).toEqual(['Rotate [redacted]', 'Other'])
   })
 })
 

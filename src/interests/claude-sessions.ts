@@ -25,7 +25,8 @@ export type ClaudeSessionsOptions = {
   home?: string
 }
 
-type Session = {
+/** One session file, reduced to the fields the digest is built from. */
+export type Session = {
   sessionId: string
   project: string
   branch?: string
@@ -70,7 +71,7 @@ export function createClaudeSessionsInterestSource(opts: ClaudeSessionsOptions =
       if (sessions.length === 0) {
         throw new Error(`no Claude Code sessions in the last ${days} days under ${dir}`)
       }
-      return render(sessions, { days, budgetChars, maxPromptChars, minPromptChars })
+      return render(select(sessions, { days, budgetChars, maxPromptChars, minPromptChars }))
     },
   }
 }
@@ -188,11 +189,26 @@ export function redact(text: string): string {
   return out
 }
 
-type RenderOptions = {
+/** The digest-shaping options, with defaults already applied. */
+export type SelectOptions = Required<
+  Pick<ClaudeSessionsOptions, 'days' | 'budgetChars' | 'maxPromptChars' | 'minPromptChars'>
+>
+
+/** One project's share of the digest. */
+export type DigestProject = {
+  name: string
+  branches: string[]
+  sessions: number
+  titles: string[]
+  /** Newest first. */
+  prompts: string[]
+}
+
+/** The digest as data. Already redacted and truncated: a renderer only formats. */
+export type Digest = {
   days: number
-  budgetChars: number
-  maxPromptChars: number
-  minPromptChars: number
+  /** Most recent activity first. */
+  projects: DigestProject[]
 }
 
 // Claude Code stores some of its own plumbing as `user` records with string
@@ -207,57 +223,76 @@ export function isPlumbing(text: string): boolean {
   return PLUMBING.some((re) => re.test(text))
 }
 
-/** Pure. Renders the digest; prompt excerpts are chosen newest-first until `budgetChars` is spent. */
-export function render(sessions: Session[], o: RenderOptions): string {
-  const seen = new Set<string>()
-  const candidates: Array<{ at: number; session: Session; text: string }> = []
-  for (const s of sessions) {
-    for (const p of s.prompts) {
-      const t = normalize(p.text)
-      if (t.length < o.minPromptChars || t.startsWith('/') || isPlumbing(t)) continue
-      // Prefix match, not equality: the same request retyped with a different
-      // tail ("...please", "...again") should still count once.
-      const key = t.slice(0, 80)
-      if (seen.has(key)) continue
-      seen.add(key)
-      candidates.push({ at: p.at, session: s, text: truncate(redact(t), o.maxPromptChars) })
-    }
-  }
-  candidates.sort((a, b) => b.at - a.at)
+type Candidate = { at: number; project: string; text: string }
 
-  const kept = new Map<Session, string[]>()
+/**
+ * Pure. Chooses what the digest carries: excerpts newest-first across all
+ * projects until `budgetChars` is spent. Stops at the first excerpt that does
+ * not fit; a shorter, older one is not picked in its place.
+ */
+export function select(sessions: Session[], o: SelectOptions): Digest {
+  const raw: Candidate[] = sessions.flatMap((s) =>
+    s.prompts.map((p) => ({ at: p.at, project: s.project, text: normalize(p.text) })),
+  )
+  raw.sort((a, b) => b.at - a.at)
+
+  const seen = new Set<string>()
+  const candidates: Candidate[] = []
+  for (const c of raw) {
+    if (c.text.length < o.minPromptChars || c.text.startsWith('/') || isPlumbing(c.text)) continue
+    // Prefix match, not equality: the same request retyped with a different
+    // tail ("...please", "...again") should still count once.
+    const key = c.text.slice(0, 80)
+    if (seen.has(key)) continue
+    seen.add(key)
+    candidates.push({ ...c, text: truncate(redact(c.text), o.maxPromptChars) })
+  }
+
+  const sessionsOf = new Map<string, Session[]>()
+  for (const s of [...sessions].sort((a, b) => b.lastActivity - a.lastActivity)) {
+    sessionsOf.set(s.project, [...(sessionsOf.get(s.project) ?? []), s])
+  }
+  const candidatesOf = new Map<string, Candidate[]>()
+  for (const c of candidates) {
+    candidatesOf.set(c.project, [...(candidatesOf.get(c.project) ?? []), c])
+  }
+
+  const kept = new Set<Candidate>()
   let used = 0
   for (const c of candidates) {
     if (used + c.text.length > o.budgetChars) break
     used += c.text.length
-    const list = kept.get(c.session) ?? []
-    list.push(c.text)
-    kept.set(c.session, list)
+    kept.add(c)
   }
 
-  const byProject = new Map<string, Session[]>()
-  for (const s of [...sessions].sort((a, b) => b.lastActivity - a.lastActivity)) {
-    const list = byProject.get(s.project) ?? []
-    list.push(s)
-    byProject.set(s.project, list)
+  const projects: DigestProject[] = []
+  for (const [name, list] of sessionsOf) {
+    projects.push({
+      name,
+      branches: [...new Set(list.map((s) => s.branch).filter((b): b is string => Boolean(b)))],
+      sessions: list.length,
+      titles: [...new Set(list.map((s) => s.title).filter((t): t is string => Boolean(t)))].map(redact),
+      prompts: (candidatesOf.get(name) ?? []).filter((c) => kept.has(c)).map((c) => c.text),
+    })
   }
+  return { days: o.days, projects }
+}
 
+/** Pure. Renders a digest as Markdown. */
+export function render(d: Digest): string {
   const lines: string[] = [
-    `# What I have been working on (Claude Code sessions, last ${o.days} days)`,
+    `# What I have been working on (Claude Code sessions, last ${d.days} days)`,
     '',
     'Projects are listed most-recent first. Under each: session titles, then',
     'excerpts of my own prompts (newest first).',
   ]
-  for (const [project, list] of byProject) {
-    const branches = [...new Set(list.map((s) => s.branch).filter(Boolean))]
-    const head = branches.length ? `${project} (branches: ${branches.join(', ')})` : project
-    lines.push('', `## ${head} — ${list.length} session${list.length === 1 ? '' : 's'}`)
-    const titles = [...new Set(list.map((s) => s.title).filter((t): t is string => Boolean(t)))]
-    for (const t of titles) lines.push(`- ${redact(t)}`)
-    const prompts = list.flatMap((s) => kept.get(s) ?? [])
-    if (prompts.length) {
+  for (const p of d.projects) {
+    const head = p.branches.length ? `${p.name} (branches: ${p.branches.join(', ')})` : p.name
+    lines.push('', `## ${head} — ${p.sessions} session${p.sessions === 1 ? '' : 's'}`)
+    for (const t of p.titles) lines.push(`- ${t}`)
+    if (p.prompts.length) {
       lines.push('', 'Prompts:')
-      for (const p of prompts) lines.push(`- "${p}"`)
+      for (const t of p.prompts) lines.push(`- "${t}"`)
     }
   }
   return lines.join('\n') + '\n'
