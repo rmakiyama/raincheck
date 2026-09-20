@@ -358,8 +358,7 @@ export function select(sessions: Session[], o: SelectOptions): RecentWork {
 
   const guaranteedOf = new Map<string, Candidate[]>();
   for (const [project, list] of candidatesOf) {
-    const openings = sessionsOf
-      .get(project)!
+    const openings = (sessionsOf.get(project) ?? [])
       .map((s) => opening.get(s))
       .filter((c): c is Candidate => c !== undefined);
     guaranteedOf.set(project, [
@@ -369,7 +368,10 @@ export function select(sessions: Session[], o: SelectOptions): RecentWork {
   const guaranteed: Candidate[] = [];
   const lists = [...guaranteedOf.values()];
   for (let turn = 0; lists.some((list) => turn < list.length); turn++) {
-    for (const list of lists) if (list[turn]) guaranteed.push(list[turn]!);
+    for (const list of lists) {
+      const c = list[turn];
+      if (c) guaranteed.push(c);
+    }
   }
   const taken = new Set(guaranteed);
   const order = guaranteed.concat(candidates.filter((c) => !taken.has(c)));

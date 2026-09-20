@@ -63,7 +63,7 @@ function decision(levels: Record<string, number>): Decision {
   // Skip rather than throw: the verdict still reaches the sink with its
   // answers attached, which is what makes the bad answer diagnosable.
   if (distance === undefined || effect === undefined) return "skip";
-  return OUTCOME[distance]![effect]!;
+  return OUTCOME[distance]?.[effect] ?? "skip";
 }
 
 /**
@@ -80,10 +80,14 @@ function level(
   const a = answers[id];
   if (a?.type !== "score") return undefined;
   let best: number | undefined;
+  let bestP = -1;
   for (let i = 0; i < QUESTIONS[id].criteria.length; i++) {
     const p = a.probabilities[String(i)];
     if (p === undefined) return undefined;
-    if (best === undefined || p > a.probabilities[String(best)]!) best = i;
+    if (p > bestP) {
+      best = i;
+      bestP = p;
+    }
   }
   return best;
 }
@@ -101,10 +105,12 @@ export function rank(verdicts: Verdict[]): Verdict[] {
     mean(v, "effect"),
   ];
   return [...verdicts].sort((a, b) => {
-    const ka = keys(a);
     const kb = keys(b);
-    for (let i = 0; i < ka.length; i++)
-      if (ka[i] !== kb[i]) return kb[i]! - ka[i]!;
+    for (const [i, x] of keys(a).entries()) {
+      const y = kb[i];
+      if (y === undefined) break;
+      if (x !== y) return y - x;
+    }
     return 0;
   });
 }

@@ -10,6 +10,7 @@ import { createClaudeSessionsInterestSource } from "../src/interests/claude-sess
 import { createJevClient } from "../src/jev/client.ts";
 import { buildState, JEV_MODEL, QUESTIONS } from "../src/questions.ts";
 import { createRaindropSource } from "../src/raindrop/source.ts";
+import type { Bookmark } from "../src/types.ts";
 
 const credentials = await loadCredentials({ warn: console.warn });
 const apiKey = resolveSecret("TYPESAFE_API_KEY", credentials.typesafeApiKey);
@@ -30,7 +31,8 @@ const raw = await fetch(
 );
 console.log(`raindrop: HTTP ${raw.status}`);
 const page = (await raw.json()) as { items?: Record<string, unknown>[] };
-const first = page.items?.[0];
+const items = page.items ?? [];
+const first = items[0];
 if (!first) {
   console.log("raindrop: no bookmarks returned");
   process.exit(1);
@@ -41,15 +43,13 @@ console.log(
 );
 console.log(
   "raindrop: highlights inlined in list response:",
-  page.items!.some(
-    (i) => Array.isArray(i.highlights) && i.highlights.length > 0,
-  )
+  items.some((i) => Array.isArray(i.highlights) && i.highlights.length > 0)
     ? "yes (at least one bookmark has some)"
     : "not observed in the first 5 bookmarks — check a bookmark you know has highlights",
 );
 
 const source = createRaindropSource({ token });
-let bookmark;
+let bookmark: Bookmark | undefined;
 for await (const it of source.fetch({ limit: 1 })) bookmark = it;
 if (!bookmark) {
   console.log("adapter: nothing mapped");
