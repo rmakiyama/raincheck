@@ -195,26 +195,28 @@ describe('select', () => {
   const P = (tag: string) => `${tag} lorem ipsum dolor sit amet consectetur adipiscing elit`.slice(0, 50)
   const opts = { days: 7, budgetChars: 500, guaranteedPrompts: 3, maxPromptChars: 300, minPromptChars: 40 }
 
-  it('gives every project its newest prompts first, then spends the rest newest-first', () => {
+  it('gives every session its opening prompt and every project its newest prompts, then spends the rest newest-first', () => {
     const busy = session('busy', 1, Array.from({ length: 20 }, (_, i) => prompt(P(`busy${i}`), 1 + i / 100)))
     const quiet = session('quiet', 3, [prompt(P('quiet0'), 3), prompt(P('quiet1'), 4), prompt(P('quiet2'), 5), prompt(P('quiet3'), 6)])
     const older = session('older', 6, [prompt(P('older0'), 6)])
     const d = select([older, quiet, busy], opts)
 
     expect(d.projects.map((p) => p.name)).toEqual(['busy', 'quiet', 'older'])
-    // 500 chars = 10 prompts: 3 guaranteed to busy, 3 to quiet, 1 to older, 3 more to busy by recency.
-    expect(d.projects[0]!.prompts).toHaveLength(6)
-    expect(d.projects[0]!.prompts[0]).toContain('busy0')
-    expect(d.projects[1]!.prompts.map((t) => t.slice(0, 6))).toEqual(['quiet0', 'quiet1', 'quiet2'])
+    // 500 chars = 10 prompts. Guaranteed: busy0-2 + busy19 (opening), quiet0-2 + quiet3 (opening),
+    // older0. One left for recency: busy3.
+    expect(d.projects[0]!.prompts.map((t) => t.slice(0, 6))).toEqual(['busy0 ', 'busy1 ', 'busy2 ', 'busy3 ', 'busy19'])
+    expect(d.projects[1]!.prompts.map((t) => t.slice(0, 6))).toEqual(['quiet0', 'quiet1', 'quiet2', 'quiet3'])
     expect(d.projects[2]!.prompts).toHaveLength(1)
   })
 
-  it('falls back to pure recency when the guarantee is zero', () => {
+  it('keeps only opening prompts beyond pure recency when the per-project guarantee is zero', () => {
     const busy = session('busy', 1, Array.from({ length: 20 }, (_, i) => prompt(P(`busy${i}`), 1 + i / 100)))
-    const quiet = session('quiet', 3, [prompt(P('quiet0'), 3)])
+    const quiet = session('quiet', 3, [prompt(P('quiet0'), 3), prompt(P('quiet1'), 4)])
     const d = select([quiet, busy], { ...opts, guaranteedPrompts: 0 })
-    expect(d.projects[0]!.prompts).toHaveLength(10)
-    expect(d.projects[1]!.prompts).toHaveLength(0)
+    // busy19 and quiet1 open their sessions; the other 8 slots go newest-first, all to busy.
+    expect(d.projects[0]!.prompts).toHaveLength(9)
+    expect(d.projects[0]!.prompts.at(-1)).toContain('busy19')
+    expect(d.projects[1]!.prompts.map((t) => t.slice(0, 6))).toEqual(['quiet1'])
   })
 
   it('carries branches, session counts and redacted titles', () => {
