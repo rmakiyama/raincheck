@@ -53,7 +53,7 @@ Agent Skillsと歩むAndroidのUI実装
   https://sizu.me/rmakiyama/posts/ts84sww1ezdw
   relevant=0.63  actionable=0.18  already_known=0.11  depth=1.1
 
-judged 24, surfaced 3, failed 0, model=jev-1.13.0, tokens in=95210 out=1150
+judged 24, surfaced 3, consulted 0, failed 0, model=jev-1.13.0, tokens in=95210 out=1150
 ```
 
 The numbers under each article are Jev's answers. See [Questions](#questions) for what they mean.
@@ -99,6 +99,8 @@ raincheck context
 ### Article
 
 The bookmark's title, description, your note, your highlights, tags, and domain. The URL and the saved date are not sent.
+
+A bookmark whose URL appears in one of your prompts is treated as already read: it is not sent to Jev and is excluded as `consulted`.
 
 ## Questions
 

@@ -1,4 +1,24 @@
-import type { Decision, Bookmark, JevAnswers, JevResponse, Thresholds, Verdict } from './types.ts'
+import type { Decision, Bookmark, JevAnswers, JevResponse, RecentWork, Thresholds, Verdict } from './types.ts'
+
+/**
+ * Pure. True when a prompt in `recentWork` contains the bookmark's URL: the
+ * person has already brought the article into their work, so suggesting it
+ * again is noise. Scheme, `www.`, a trailing slash, and a fragment are
+ * ignored on both sides.
+ */
+export function consulted(recentWork: RecentWork, bookmark: Bookmark): boolean {
+  const url = bareUrl(bookmark.url)
+  if (!url) return false
+  return recentWork.projects.some((p) => p.prompts.some((text) => bareUrl(text).includes(url)))
+}
+
+function bareUrl(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/https?:\/\/(www\.)?/g, '')
+    .replace(/#[^\s]*/g, '')
+    .replace(/\/(?=\s|$)/g, '')
+}
 
 /** Pure. `res.answers` is stored on the verdict as-is, not copied. */
 export function decide(

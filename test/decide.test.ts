@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { decide, rank } from '../src/decide.ts'
-import type { Bookmark, JevAnswers, Verdict } from '../src/types.ts'
+import { consulted, decide, rank } from '../src/decide.ts'
+import type { Bookmark, JevAnswers, RecentWork, Verdict } from '../src/types.ts'
 
 const bookmark: Bookmark = {
   id: 'raindrop:1',
@@ -92,5 +92,25 @@ describe('rank', () => {
     const input = [v('a', 0.3), v('b', 0.9)]
     rank(input)
     expect(input.map((x) => x.bookmark.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('consulted', () => {
+  const work = (...prompts: string[]): RecentWork => ({
+    days: 7,
+    projects: [{ name: 'p', branches: [], sessions: 1, titles: [], prompts }],
+  })
+  const at = (url: string): Bookmark => ({ ...bookmark, url })
+
+  it('is true when a prompt contains the URL, ignoring scheme, www, trailing slash and fragment', () => {
+    const w = work('read https://docs.example.com/cookbooks/a/ and tell me', 'unrelated prompt text here')
+    expect(consulted(w, at('https://docs.example.com/cookbooks/a'))).toBe(true)
+    expect(consulted(w, at('http://www.docs.example.com/cookbooks/a/#setup'))).toBe(true)
+  })
+
+  it('is false for a different page on the same site or no URL at all', () => {
+    const w = work('read https://docs.example.com/cookbooks/a/ please')
+    expect(consulted(w, at('https://docs.example.com/cookbooks/b'))).toBe(false)
+    expect(consulted(work('nothing here'), at('https://docs.example.com/cookbooks/a'))).toBe(false)
   })
 })

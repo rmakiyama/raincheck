@@ -15,6 +15,7 @@ import { createJevClient } from './jev/client.ts'
 import { JEV_MODEL } from './questions.ts'
 import { createRaindropSource } from './raindrop/source.ts'
 import { run } from './run.ts'
+import type { Verdict } from './types.ts'
 import { createJsonlSink } from './sinks/jsonl.ts'
 import { createStdoutSink } from './sinks/stdout.ts'
 
@@ -110,11 +111,12 @@ async function main(): Promise<number> {
     },
   })
 
-  const surfaced = result.verdicts.filter((v) => v.decision === 'surface').length
-  const models = [...new Set(result.verdicts.map((v) => v.model))].join(',') || '-'
+  const count = (d: Verdict['decision']) => result.verdicts.filter((v) => v.decision === d).length
+  const consulted = count('consulted')
+  const models = [...new Set(result.verdicts.map((v) => v.model).filter(Boolean))].join(',') || '-'
   process.stderr.write(
-    `judged ${result.verdicts.length}, surfaced ${surfaced}, failed ${result.failed}, ` +
-      `model=${models}, tokens in=${result.usage.input_tokens} out=${result.usage.output_tokens}\n`,
+    `judged ${result.verdicts.length - consulted}, surfaced ${count('surface')}, consulted ${consulted}, ` +
+      `failed ${result.failed}, model=${models}, tokens in=${result.usage.input_tokens} out=${result.usage.output_tokens}\n`,
   )
   if (result.sourceError !== undefined) {
     process.stderr.write(`raincheck: source stopped early: ${describe(result.sourceError)}\n`)

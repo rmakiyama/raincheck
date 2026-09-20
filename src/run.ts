@@ -1,4 +1,4 @@
-import { decide, rank } from './decide.ts'
+import { consulted, decide, rank } from './decide.ts'
 import { buildQuestions, buildState } from './questions.ts'
 import type {
   InterestSource,
@@ -37,8 +37,8 @@ export type RunResult = {
 }
 
 /**
- * Loads the digest, judges every bookmark with bounded parallelism, ranks, and
- * emits once. All I/O arrives through `opts`; nothing here touches the network
+ * Loads the digest, judges every bookmark the person has not already consulted
+ * with bounded parallelism, ranks, and emits once. All I/O arrives through `opts`; nothing here touches the network
  * or filesystem directly. Rejects only if `interests.load()` or `sink.emit()`
  * rejects — per-bookmark and source failures are reported in the result instead.
  */
@@ -52,6 +52,10 @@ export async function run(opts: RunOptions): Promise<RunResult> {
   let failed = 0
 
   const judge = async (bookmark: Bookmark) => {
+    if (consulted(interests, bookmark)) {
+      verdicts.push({ bookmark, answers: {}, decision: 'consulted' })
+      return
+    }
     try {
       const res = await opts.jev.ask(buildState(interests, bookmark), questions)
       usage.input_tokens += res.usage?.input_tokens ?? 0

@@ -77,6 +77,26 @@ describe('run', () => {
     expect(result.failed).toBe(0)
   })
 
+  it('does not judge a bookmark the prompts already refer to, and emits it as consulted', async () => {
+    const sink = capture()
+    const jev = jevByTitle()
+    const seen = { ...bookmark(1), url: 'https://example.com/seen' }
+    const work: RecentWork = { ...recentWork, projects: [{ ...recentWork.projects[0]!, prompts: ['look at https://example.com/seen/ first'] }] }
+    await run({
+      bookmarks: source([bookmark(0), seen]),
+      interests: { name: 'stub', load: async () => work },
+      jev,
+      sink,
+      thresholds: { relevant: 0.5 },
+    })
+    expect(jev.states).toHaveLength(1)
+    expect(sink.got.map((v) => [v.bookmark.id, v.decision])).toEqual([
+      ['raindrop:0', 'surface'],
+      ['raindrop:1', 'consulted'],
+    ])
+    expect(sink.got[1]).toEqual({ bookmark: seen, answers: {}, decision: 'consulted' })
+  })
+
   it('builds state from recent work and the bookmark only', async () => {
     const jev = jevByTitle()
     await run({

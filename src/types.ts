@@ -130,14 +130,15 @@ export interface Sink {
  */
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>
 
-export type Decision = 'surface' | 'skip'
+/** `consulted`: the person's own prompts already refer to the article, so it was not judged. */
+export type Decision = 'surface' | 'skip' | 'consulted'
 
 export type Verdict = {
   bookmark: Bookmark
-  /** Every answer Jev returned, probabilities intact, so a decision can be traced later. */
+  /** Every answer Jev returned, probabilities intact, so a decision can be traced later. Empty when not judged. */
   answers: JevAnswers
-  /** The model ID Jev reported, e.g. `jev-1.13.0`; versioned even when an alias was requested. */
-  model: string
+  /** The model ID Jev reported, e.g. `jev-1.13.0`; versioned even when an alias was requested. Absent when not judged. */
+  model?: string
   decision: Decision
 }
 
