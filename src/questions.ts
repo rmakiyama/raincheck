@@ -68,20 +68,22 @@ export const QUESTIONS = {
   // which decides better.
   distance: {
     type: 'score',
-    instructions: 'How close is `article` to what the person is doing in `recent_work`?',
+    instructions:
+      'How close is the main subject of `article` to what the person is currently working on or thinking through, as shown in `recent_work`?',
     criteria: [
-      'Unrelated: nothing the person is working on involves what the article is about; at most they share a word.',
-      'Adjacent: the same field or the same kind of problem, but the article is about a different tool, approach, or layer than the one the person is using.',
-      'On the work: the article is about a technology, tool, or design problem the person is actively using or wrestling with; they would say "this is about what I am doing".',
+      "No contact: the article's subject has nothing to do with what the person is working on or thinking through; at most they share a word.",
+      "Touches it: the article's main subject is something else and only touches on what the person is working on; or it treats the same kind of question with a different object or approach.",
+      "The subject itself: the article's main subject is the very thing the person is working on or thinking through, whether that is a technology, a way of working, or a question about a design or a product.",
     ],
   },
   effect: {
     type: 'score',
-    instructions: "After reading `article`, how would the person's current work in `recent_work` change?",
+    instructions:
+      'After reading `article`, how would what the person is currently doing, as shown in `recent_work`, change?',
     criteria: [
-      'Not at all: it confirms what the person already does, or it is general background, opinion, or news.',
-      'Informs a decision: it shows options, pitfalls, or another way of doing something the person is doing, without giving them something to apply right away.',
-      'Applied right away: it gives a concrete technique, API, configuration, or fix that maps directly onto something the person is currently building or debugging.',
+      'Not at all: it confirms what the person already does; it is general background, opinion, or news; or it is an overview or a list of practices that does not bear on a choice the person is facing.',
+      'A choice is informed: it gives options, pitfalls, or a comparison that bear specifically on a choice the person is facing now — what to use, how to build something, how to proceed, what to make.',
+      'Applied as is: it gives a concrete method, decision, or procedure the person can apply directly to what they are doing now.',
     ],
   },
 } as const satisfies JevQuestions
