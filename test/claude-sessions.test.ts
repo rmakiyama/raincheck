@@ -129,12 +129,12 @@ describe('createClaudeSessionsInterestSource', () => {
     expect(out.projects[0]!.prompts).toEqual(['SECOND ' + LONG, 'FIRST ' + LONG])
   })
 
-  it('truncates long prompts and respects the character budget, newest first', async () => {
+  it('truncates long prompts; a tight budget keeps the opening prompt and the newest', async () => {
     const big = (tag: string) => `${tag} ${'lorem ipsum '.repeat(50)}`
     await session('p', 'a', [user(big('OLDEST'), 3), user(big('MIDDLE'), 2), user(big('NEWEST'), 1)])
     const out = await load({ maxPromptChars: 100, budgetChars: 220 })
     const prompts = out.projects[0]!.prompts
-    expect(prompts.map((p) => p.slice(0, 6))).toEqual(['NEWEST', 'MIDDLE'])
+    expect(prompts.map((p) => p.slice(0, 6))).toEqual(['NEWEST', 'OLDEST'])
     expect(prompts[0]).toHaveLength(100)
     expect(prompts[0]!.endsWith('…')).toBe(true)
   })
@@ -217,6 +217,19 @@ describe('select', () => {
     expect(d.projects[0]!.prompts).toHaveLength(9)
     expect(d.projects[0]!.prompts.at(-1)).toContain('busy19')
     expect(d.projects[1]!.prompts.map((t) => t.slice(0, 6))).toEqual(['quiet1'])
+  })
+
+  it('shares a budget too small for every guarantee one excerpt per project at a time', () => {
+    const many = (name: string, days: number) =>
+      session(name, days, Array.from({ length: 6 }, (_, i) => prompt(P(`${name}${i}`), days + i / 100)))
+    const d = select([many('c', 5), many('b', 3), many('a', 1)], { ...opts, budgetChars: 300 })
+    // Each project asks for 4 (opening + newest 3); 300 chars = 6 prompts, so two rounds of three.
+    expect(d.projects.map((p) => [p.name, p.prompts.length])).toEqual([
+      ['a', 2],
+      ['b', 2],
+      ['c', 2],
+    ])
+    expect(d.projects[2]!.prompts.map((t) => t.slice(0, 2))).toEqual(['c0', 'c5'])
   })
 
   it('carries branches, session counts and redacted titles', () => {

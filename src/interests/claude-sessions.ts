@@ -227,13 +227,17 @@ export function stripAttached(text: string): string {
 type Candidate = { at: number; session: Session; text: string }
 
 /**
- * Pure. Chooses what `RecentWork` carries. First, newest-first among them:
- * every session's opening prompt and every project's `guaranteedPrompts`
- * newest excerpts. Then the rest of `budgetChars` goes to the newest excerpts
- * across all projects. Both passes stop at the first excerpt that does not
- * fit; a shorter, older one is not picked in its place. Without the
- * guarantees one busy day pushes every other project out, and a long session
- * pushes out the prompt that says what it is for.
+ * Pure. Chooses what `RecentWork` carries. Guaranteed excerpts come first:
+ * for each project, the opening prompt of each of its sessions and its
+ * `guaranteedPrompts` newest excerpts, taken one per project in turn so a
+ * tight budget still leaves every project its first pick. The rest of
+ * `budgetChars` goes to the newest excerpts across all projects. Both passes
+ * stop at the first excerpt that does not fit; a shorter, older one is not
+ * picked in its place. Without the guarantees one busy day pushes every other
+ * project out, and a long session pushes out the prompt that says what it is
+ * for. A session's "opening" prompt is its oldest excerpt inside the window
+ * that survived the filters above, which for a session begun before the
+ * window is not its first message.
  */
 export function select(sessions: Session[], o: SelectOptions): RecentWork {
   const raw: Candidate[] = sessions.flatMap((s) =>
@@ -262,14 +266,21 @@ export function select(sessions: Session[], o: SelectOptions): RecentWork {
     candidatesOf.set(c.session.project, [...(candidatesOf.get(c.session.project) ?? []), c])
   }
 
-  const guaranteed = new Set<Candidate>()
-  for (const project of sessionsOf.keys()) {
-    for (const c of (candidatesOf.get(project) ?? []).slice(0, o.guaranteedPrompts)) guaranteed.add(c)
-  }
   const opening = new Map<Session, Candidate>()
-  for (const c of candidates) opening.set(c.session, c) // newest-first, so the last write is the oldest
-  for (const c of opening.values()) guaranteed.add(c)
-  const order = [...guaranteed].sort((a, b) => b.at - a.at).concat(candidates.filter((c) => !guaranteed.has(c)))
+  for (const c of [...candidates].reverse()) if (!opening.has(c.session)) opening.set(c.session, c)
+
+  const guaranteedOf = new Map<string, Candidate[]>()
+  for (const [project, list] of candidatesOf) {
+    const openings = sessionsOf.get(project)!.map((s) => opening.get(s)).filter((c): c is Candidate => c !== undefined)
+    guaranteedOf.set(project, [...new Set([...openings, ...list.slice(0, o.guaranteedPrompts)])])
+  }
+  const guaranteed: Candidate[] = []
+  const lists = [...guaranteedOf.values()]
+  for (let turn = 0; lists.some((list) => turn < list.length); turn++) {
+    for (const list of lists) if (list[turn]) guaranteed.push(list[turn]!)
+  }
+  const taken = new Set(guaranteed)
+  const order = guaranteed.concat(candidates.filter((c) => !taken.has(c)))
 
   const kept = new Set<Candidate>()
   let used = 0
