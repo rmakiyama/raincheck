@@ -1,6 +1,11 @@
 import type { Bookmark, JevQuestions, Thresholds } from './types.ts'
 
-export const JEV_MODEL = 'jev-latest'
+/**
+ * A versioned ID, not `jev-latest`: `DEFAULT_THRESHOLDS` were tuned against
+ * this version, and an alias moves without notice. Moving to a newer model
+ * means recalibrating the thresholds at the same time.
+ */
+export const JEV_MODEL = 'jev-1.13.0'
 
 export const DEFAULT_THRESHOLDS: Thresholds = {
   // TODO: recalibrate once a week of labelled bookmarks exists; 0.6 rests on 18
