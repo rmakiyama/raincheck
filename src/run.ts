@@ -35,10 +35,11 @@ export type RunResult = {
 }
 
 /**
- * Loads the digest, judges every bookmark the person has not already consulted
- * with bounded parallelism, ranks, and emits once. All I/O arrives through `opts`; nothing here touches the network
- * or filesystem directly. Rejects only if `interests.load()` or `sink.emit()`
- * rejects — per-bookmark and source failures are reported in the result instead.
+ * Loads the digest, judges every bookmark the person has not already
+ * consulted with bounded parallelism, ranks, and emits once. All I/O arrives
+ * through `opts`; nothing here touches the network or filesystem directly.
+ * Rejects only if `interests.load()` or `sink.emit()` rejects — per-bookmark
+ * and source failures are reported in the result instead.
  */
 export async function run(opts: RunOptions): Promise<RunResult> {
   const interests = await opts.interests.load()

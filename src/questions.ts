@@ -1,9 +1,9 @@
 import type { Bookmark, Decision, JevQuestions, RecentWork } from './types.ts'
 
 /**
- * A versioned ID, not `jev-latest`: `DEFAULT_THRESHOLDS` were tuned against
- * this version, and an alias moves without notice. Moving to a newer model
- * means recalibrating the thresholds at the same time.
+ * A versioned ID, not `jev-latest`: the level wording and `OUTCOME` were
+ * checked against this version, and an alias moves without notice. Moving
+ * to a newer model means judging the same bookmarks again first.
  */
 export const JEV_MODEL = 'jev-1.13.0'
 
@@ -26,9 +26,6 @@ export const QUESTIONS = {
       'Requires working through it hands-on (following code, running examples, or reproducing steps).',
     ],
   },
-  // `distance` and `effect` decide, through `OUTCOME`. Their levels are
-  // outcomes, not degrees, so there is no threshold to fit: what moves an
-  // article between sections is the wording of a level or a cell of the table.
   distance: {
     type: 'score',
     instructions:
@@ -55,10 +52,12 @@ export const QUESTIONS = {
 export const DEPTH_LABELS = ['the title says it all', 'a short read', 'a sitting', 'hands-on'] as const
 
 /**
- * What to do with an article, by the nearest level of `distance` (rows) and
- * `effect` (columns), both in `criteria` order. An article that changes
- * nothing is not worth reading however close; one that is merely adjacent
- * goes to the second section, where a suggestion may still be a discovery.
+ * What to do with an article, by its level of `distance` (rows) and `effect`
+ * (columns), both in `criteria` order. Levels are outcomes, not degrees, so
+ * there is no threshold to fit: what moves an article between sections is
+ * the wording of a level or a cell here. An article that changes nothing is
+ * not worth reading however close; one that is merely adjacent goes to the
+ * second section, where a suggestion may still be a discovery.
  */
 export const OUTCOME = [
   // effect:  nothing  informs    applies

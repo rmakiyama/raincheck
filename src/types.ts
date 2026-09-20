@@ -100,7 +100,7 @@ export type RecentProject = {
  */
 export type RecentWork = {
   days: number
-  /** Most recent activity first. Questions address projects by index. */
+  /** Most recent activity first. */
   projects: RecentProject[]
 }
 
