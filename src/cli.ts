@@ -28,7 +28,7 @@ usage: raincheck [options]        judge bookmarks against recent Claude Code ses
   --days N          look back N days of Claude Code sessions (default: ${DEFAULTS.days})
   --limit N         fetch and judge at most N bookmarks (default: all)
   --top N           print at most N bookmarks per section (default: all)
-  --jsonl           write every verdict (surfaced or not) as JSONL to stdout
+  --jsonl           write every verdict (shown or not) as JSONL to stdout
   --collection=ID   Raindrop collection: 0 = all, -1 = Unsorted (default: ${DEFAULTS.collection}).
                     Negative ids need the = form: --collection=-1
   --concurrency N   parallel Jev calls (default: ${DEFAULTS.concurrency})
@@ -119,7 +119,7 @@ async function main(): Promise<number> {
     process.stderr.write(`raincheck: source stopped early: ${describe(result.sourceError)}\n`)
     return 1
   }
-  return result.failed > 0 && result.verdicts.length === 0 ? 1 : 0
+  return result.failed > 0 && result.verdicts.length - consulted === 0 ? 1 : 0
 }
 
 function requireSecret(envName: string, fileKey: string, fileValue: string | undefined): string {
