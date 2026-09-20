@@ -186,18 +186,38 @@ describe('sinks', () => {
     expect(JSON.parse(lines[1]!)).toEqual(v(1, 'skip'))
   })
 
-  it('stdout prints only surfaced bookmarks, capped by top', async () => {
+  it('stdout prints helps and related under their headings, capped by top per section, with a depth label', async () => {
     const w = writer()
-    await createStdoutSink(w, { top: 1 }).emit([v(0, 'helps'), v(1, 'helps'), v(2, 'skip')])
-    expect(w.text).toContain('1 of 3 worth cashing in today')
-    expect(w.text).toContain('Article 0')
-    expect(w.text).not.toContain('Article 1')
-    expect(w.text).toContain('relevant=0.91')
+    await createStdoutSink(w, { top: 1 }).emit([v(0, 'helps'), v(1, 'helps'), v(2, 'related'), v(3, 'skip'), v(4, 'consulted')])
+    expect(w.text).toBe(
+      [
+        'Helps with what you are doing now',
+        '',
+        'Article 0',
+        '  https://example.com/0',
+        '  a sitting',
+        '',
+        'Related to what you are doing now',
+        '',
+        'Article 2',
+        '  https://example.com/2',
+        '  a sitting',
+        '',
+        '',
+      ].join('\n'),
+    )
   })
 
-  it('stdout says so when nothing surfaces', async () => {
+  it('stdout leaves out an empty section', async () => {
     const w = writer()
-    await createStdoutSink(w).emit([v(0, 'skip')])
-    expect(w.text).toBe('nothing worth cashing in today (1 judged)\n')
+    await createStdoutSink(w).emit([v(0, 'related')])
+    expect(w.text).not.toContain('Helps')
+    expect(w.text).toContain('Related to what you are doing now')
+  })
+
+  it('stdout says so when nothing is shown', async () => {
+    const w = writer()
+    await createStdoutSink(w).emit([v(0, 'skip'), v(1, 'consulted')])
+    expect(w.text).toBe('nothing worth cashing in today\n')
   })
 })

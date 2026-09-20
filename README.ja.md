@@ -39,24 +39,26 @@ raincheck --top 5
 ```
 
 ```
-3 of 24 worth cashing in today
+Helps with what you are doing now
 
 AIと開発をした半年のメモ
   https://sizu.me/rmakiyama/posts/918kx38rrnid
-  relevant=0.88  actionable=0.61  already_known=0.72  depth=1.4
+  a short read
 
 Agent Skillsと歩むAndroidのUI実装
   https://blog.kyash.co/entry/agent-skills-android-trial
-  relevant=0.79  actionable=0.55  already_known=0.36  depth=1.9
+  a sitting
+
+Related to what you are doing now
 
 抽象化とイラスト
   https://sizu.me/rmakiyama/posts/ts84sww1ezdw
-  relevant=0.63  actionable=0.18  already_known=0.11  depth=1.1
+  a short read
 
-judged 24, surfaced 3, consulted 0, failed 0, model=jev-1.13.0, tokens in=95210 out=1150
+judged 24, helps 2, related 1, consulted 0, failed 0, model=jev-1.13.0, tokens in=95210 out=1150
 ```
 
-記事ごとの数字は Jev の回答です。意味は [Questions](#questions) を参照してください。
+URL の下の 1 行は、読むのにかかる労力です。どちらの節に入るかの決まりは [Questions](#questions) を参照してください。
 
 | フラグ               | 意味                                                                   |
 | ----------------- | -------------------------------------------------------------------- |
