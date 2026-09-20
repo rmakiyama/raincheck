@@ -35,6 +35,12 @@ describe('OPTIONS', () => {
     expect(OPTIONS.collection.accepts(-1)).toBe(true)
     expect(OPTIONS.collection.accepts(NaN)).toBe(false)
   })
+})
+
+describe('resolveOptions', () => {
+  it('uses the built-in defaults when nothing else is given', () => {
+    expect(resolveOptions({}, {})).toEqual(DEFAULTS)
+  })
 
   it('takes config.json over the built-in defaults', () => {
     expect(resolveOptions({}, { days: 14, top: 5 })).toEqual({ ...DEFAULTS, days: 14, top: 5 })
@@ -54,7 +60,7 @@ describe('OPTIONS', () => {
   it('rejects a flag that breaks its rule, naming the flag', () => {
     expect(() => resolveOptions({ days: '0' }, {})).toThrow(OptionError)
     expect(() => resolveOptions({ days: '0' }, {})).toThrow('--days must be an integer >= 1')
-    expect(() => resolveOptions({ days: '3abc' }, {})).toThrow('--days must be an integer >= 1')
+    expect(() => resolveOptions({ concurrency: '3abc' }, {})).toThrow('--concurrency must be an integer >= 1')
     expect(() => resolveOptions({ top: '' }, {})).toThrow('--top must be an integer >= 0')
   })
 })
@@ -94,8 +100,8 @@ describe('loadConfig', () => {
   it('rejects values the flag would reject, naming the key', async () => {
     await write('{"days":0}')
     await expect(loadConfig({ path })).rejects.toThrow(`${path}: "days" must be an integer >= 1`)
-    await write('{"days":0}')
-    await expect(loadConfig({ path })).rejects.toThrow('"days" must be an integer >= 1')
+    await write('{"concurrency":0}')
+    await expect(loadConfig({ path })).rejects.toThrow('"concurrency" must be an integer >= 1')
     await write('{"collection":1.5}')
     await expect(loadConfig({ path })).rejects.toThrow('"collection" must be an integer')
   })
