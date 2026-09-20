@@ -3,7 +3,7 @@ import { QUESTIONS } from '../src/questions.ts'
 import { run } from '../src/run.ts'
 import { createJsonlSink } from '../src/sinks/jsonl.ts'
 import { createStdoutSink } from '../src/sinks/stdout.ts'
-import type { Bookmark, BookmarkSource, JevAnswers, JevAsker, JevResponse, Sink, Verdict } from '../src/types.ts'
+import type { Bookmark, BookmarkSource, JevAnswers, JevAsker, JevResponse, RecentWork, Sink, Verdict } from '../src/types.ts'
 import fixture from './fixtures/jev-response.json' with { type: 'json' }
 
 const bookmark = (n: number): Bookmark => ({
@@ -21,7 +21,11 @@ const source = (bookmarks: Bookmark[]): BookmarkSource => ({
   },
 })
 
-const interests = { name: 'stub', load: async () => 'Working on a Compose list screen' }
+const recentWork: RecentWork = {
+  days: 7,
+  projects: [{ name: 'org/app', branches: ['main'], sessions: 1, titles: [], prompts: ['Working on a Compose list screen'] }],
+}
+const interests = { name: 'stub', load: async () => recentWork }
 
 // Answers relevant = 1 / (n+1) so ids map to distinct probabilities.
 const jevByTitle = (fail: number[] = []): JevAsker & { states: unknown[]; inFlight: number; peak: number } => {
@@ -83,7 +87,7 @@ describe('run', () => {
       thresholds: { relevant: 0.5 },
     })
     expect(jev.states[0]).toEqual({
-      recent_work: 'Working on a Compose list screen',
+      recent_work: recentWork,
       article: { title: 'Article 0', note: 'n', tags: ['t'], highlights: ['h'] },
     })
   })

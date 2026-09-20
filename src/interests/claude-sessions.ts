@@ -6,7 +6,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import type { InterestSource } from '../types.ts'
+import type { InterestSource, RecentProject, RecentWork } from '../types.ts'
 
 export type ClaudeSessionsOptions = {
   /** @default ~/.claude/projects */
@@ -55,8 +55,8 @@ type SessionRecord = {
 }
 
 /**
- * InterestSource that turns recent Claude Code sessions under `dir` into a
- * Markdown digest. Jev cannot summarize, so all compression is done here.
+ * InterestSource that turns recent Claude Code sessions under `dir` into
+ * `RecentWork`. Jev cannot summarize, so all compression is done here.
  * Rejects when no session has activity inside the window.
  */
 export function createClaudeSessionsInterestSource(opts: ClaudeSessionsOptions = {}): InterestSource {
@@ -71,13 +71,13 @@ export function createClaudeSessionsInterestSource(opts: ClaudeSessionsOptions =
 
   return {
     name: `claude-sessions:${days}d`,
-    async load(): Promise<string> {
+    async load(): Promise<RecentWork> {
       const since = now() - days * 86_400_000
       const sessions = await collectSessions(dir, since, home)
       if (sessions.length === 0) {
         throw new Error(`no Claude Code sessions in the last ${days} days under ${dir}`)
       }
-      return render(select(sessions, { days, budgetChars, guaranteedPrompts, maxPromptChars, minPromptChars }))
+      return select(sessions, { days, budgetChars, guaranteedPrompts, maxPromptChars, minPromptChars })
     },
   }
 }
@@ -200,23 +200,6 @@ export type SelectOptions = Required<
   Pick<ClaudeSessionsOptions, 'days' | 'budgetChars' | 'guaranteedPrompts' | 'maxPromptChars' | 'minPromptChars'>
 >
 
-/** One project's share of the digest. */
-export type DigestProject = {
-  name: string
-  branches: string[]
-  sessions: number
-  titles: string[]
-  /** Newest first. */
-  prompts: string[]
-}
-
-/** The digest as data. Already redacted and truncated: a renderer only formats. */
-export type Digest = {
-  days: number
-  /** Most recent activity first. */
-  projects: DigestProject[]
-}
-
 // Claude Code stores some of its own plumbing as `user` records with string
 // content, indistinguishable from typed prompts except by these markers.
 const PLUMBING = [
@@ -232,14 +215,14 @@ export function isPlumbing(text: string): boolean {
 type Candidate = { at: number; project: string; text: string }
 
 /**
- * Pure. Chooses what the digest carries. Every project keeps its
+ * Pure. Chooses what `RecentWork` carries. Every project keeps its
  * `guaranteedPrompts` newest excerpts first (projects in recency order), then
  * the rest of `budgetChars` goes to the newest excerpts across all projects.
  * Both passes stop at the first excerpt that does not fit; a shorter, older
  * one is not picked in its place. Without the guarantee one busy day pushes
  * every other project out.
  */
-export function select(sessions: Session[], o: SelectOptions): Digest {
+export function select(sessions: Session[], o: SelectOptions): RecentWork {
   const raw: Candidate[] = sessions.flatMap((s) =>
     s.prompts.map((p) => ({ at: p.at, project: s.project, text: normalize(p.text) })),
   )
@@ -280,7 +263,7 @@ export function select(sessions: Session[], o: SelectOptions): Digest {
     kept.add(c)
   }
 
-  const projects: DigestProject[] = []
+  const projects: RecentProject[] = []
   for (const [name, list] of sessionsOf) {
     projects.push({
       name,
@@ -291,26 +274,6 @@ export function select(sessions: Session[], o: SelectOptions): Digest {
     })
   }
   return { days: o.days, projects }
-}
-
-/** Pure. Renders a digest as Markdown. */
-export function render(d: Digest): string {
-  const lines: string[] = [
-    `# What I have been working on (Claude Code sessions, last ${d.days} days)`,
-    '',
-    'Projects are listed most-recent first. Under each: session titles, then',
-    'excerpts of my own prompts (newest first).',
-  ]
-  for (const p of d.projects) {
-    const head = p.branches.length ? `${p.name} (branches: ${p.branches.join(', ')})` : p.name
-    lines.push('', `## ${head} — ${p.sessions} session${p.sessions === 1 ? '' : 's'}`)
-    for (const t of p.titles) lines.push(`- ${t}`)
-    if (p.prompts.length) {
-      lines.push('', 'Prompts:')
-      for (const t of p.prompts) lines.push(`- "${t}"`)
-    }
-  }
-  return lines.join('\n') + '\n'
 }
 
 function normalize(text: string): string {

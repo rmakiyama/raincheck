@@ -84,11 +84,31 @@ export interface BookmarkSource {
   fetch(opts: { limit?: number }): AsyncIterable<Bookmark>
 }
 
-/** Produces the text Jev sees as `recent_work`. */
+/** One project's share of `RecentWork`. */
+export type RecentProject = {
+  name: string
+  branches: string[]
+  sessions: number
+  titles: string[]
+  /** Newest first. */
+  prompts: string[]
+}
+
+/**
+ * What Jev sees as `recent_work`. Already redacted: nothing downstream masks
+ * it again before it leaves the machine.
+ */
+export type RecentWork = {
+  days: number
+  /** Most recent activity first. Questions address projects by index. */
+  projects: RecentProject[]
+}
+
+/** Produces what Jev sees as `recent_work`. */
 export interface InterestSource {
   readonly name: string
-  /** Resolves to non-empty text. Rejects when there is nothing to describe. */
-  load(): Promise<string>
+  /** Resolves with at least one project. Rejects when there is nothing to describe. */
+  load(): Promise<RecentWork>
 }
 
 /** One round-trip to Jev. */

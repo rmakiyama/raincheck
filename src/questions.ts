@@ -1,4 +1,4 @@
-import type { Bookmark, JevQuestions, Thresholds } from './types.ts'
+import type { Bookmark, JevQuestions, RecentWork, Thresholds } from './types.ts'
 
 /**
  * A versioned ID, not `jev-latest`: `DEFAULT_THRESHOLDS` were tuned against
@@ -69,7 +69,7 @@ export const QUESTIONS = {
  * accuracy: `savedAt` is out (Jev cannot do date math) and `url` is out
  * (`domain` carries the same signal in fewer tokens).
  */
-export function buildState(recentWork: string, bookmark: Bookmark) {
+export function buildState(recentWork: RecentWork, bookmark: Bookmark) {
   const article: Record<string, unknown> = { title: bookmark.title }
   if (bookmark.summary) article.summary = bookmark.summary
   if (bookmark.note) article.note = bookmark.note

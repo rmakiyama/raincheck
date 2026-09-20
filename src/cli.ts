@@ -83,7 +83,7 @@ async function main(): Promise<number> {
   const interests = createClaudeSessionsInterestSource({ days: options.days })
 
   if (command === 'context') {
-    process.stdout.write(await interests.load())
+    process.stdout.write(JSON.stringify(await interests.load(), null, 2) + '\n')
     return 0
   }
 

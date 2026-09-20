@@ -11,6 +11,7 @@ import {
   select,
   type Session,
 } from '../src/interests/claude-sessions.ts'
+import type { RecentWork } from '../src/types.ts'
 
 const NOW = Date.parse('2026-09-19T12:00:00Z')
 const DAY = 86_400_000
@@ -61,7 +62,10 @@ describe('createClaudeSessionsInterestSource', () => {
 
   const LONG = 'Migrate the list screen to LazyColumn and fix recomposition of the row bookmarks'
 
-  it('renders project, branch, title, and long prompts; skips assistant text and tool results', async () => {
+  // Everything that leaves the machine, as one string, for "must not contain" checks.
+  const text = (work: RecentWork) => JSON.stringify(work)
+
+  it('carries project, branch, title, and long prompts; skips assistant text and tool results', async () => {
     await session('p', 'a', [
       title('Compose list performance'),
       user(LONG, 1),
@@ -69,18 +73,19 @@ describe('createClaudeSessionsInterestSource', () => {
       assistant('I changed the stability annotations in a way you should not see here', 1),
     ])
     const out = await load()
-    expect(out).toContain('## org/repo (branches: main) — 1 session')
-    expect(out).toContain('- Compose list performance')
-    expect(out).toContain(`- "${LONG}"`)
-    expect(out).not.toContain('SECRET OUTPUT')
-    expect(out).not.toContain('stability annotations')
+    expect(out.days).toBe(7)
+    expect(out.projects).toEqual([
+      { name: 'org/repo', branches: ['main'], sessions: 1, titles: ['Compose list performance'], prompts: [LONG] },
+    ])
+    expect(text(out)).not.toContain('SECRET OUTPUT')
+    expect(text(out)).not.toContain('stability annotations')
   })
 
   it('ignores records outside the window even in recently modified files', async () => {
     await session('p', 'a', [title('old'), user(LONG + ' (old)', 10), user(LONG + ' (new)', 2)])
     const out = await load()
-    expect(out).toContain('(new)')
-    expect(out).not.toContain('(old)')
+    expect(text(out)).toContain('(new)')
+    expect(text(out)).not.toContain('(old)')
   })
 
   it('drops sessions with nothing inside the window and fails when none remain', async () => {
@@ -92,7 +97,7 @@ describe('createClaudeSessionsInterestSource', () => {
     await session('p', 'a', [user(LONG, 1)])
     await session('p/a/subagents', 'agent-1', [user('AGENT PROMPT: ' + LONG, 1)])
     const out = await load()
-    expect(out).not.toContain('AGENT PROMPT')
+    expect(text(out)).not.toContain('AGENT PROMPT')
   })
 
   it('drops short prompts, slash commands, meta and sidechain entries', async () => {
@@ -105,28 +110,23 @@ describe('createClaudeSessionsInterestSource', () => {
       user('SIDE ' + LONG, 1, { isSidechain: true }),
     ])
     const out = await load()
-    expect(out.match(/^- "/gm)).toHaveLength(1)
-    expect(out).not.toContain('/commit')
-    expect(out).not.toContain('META')
-    expect(out).not.toContain('SIDE')
+    expect(out.projects[0]!.prompts).toEqual([LONG])
   })
 
   it('deduplicates repeated prompts and orders newest first', async () => {
     await session('p', 'a', [user('FIRST ' + LONG, 3), user('SECOND ' + LONG, 1), user('FIRST ' + LONG, 2)])
     const out = await load()
-    expect(out.match(/FIRST/g)).toHaveLength(1)
-    expect(out.indexOf('SECOND')).toBeLessThan(out.indexOf('FIRST'))
+    expect(out.projects[0]!.prompts).toEqual(['SECOND ' + LONG, 'FIRST ' + LONG])
   })
 
   it('truncates long prompts and respects the character budget, newest first', async () => {
     const big = (tag: string) => `${tag} ${'lorem ipsum '.repeat(50)}`
     await session('p', 'a', [user(big('OLDEST'), 3), user(big('MIDDLE'), 2), user(big('NEWEST'), 1)])
     const out = await load({ maxPromptChars: 100, budgetChars: 220 })
-    expect(out).toContain('NEWEST')
-    expect(out).toContain('MIDDLE')
-    expect(out).not.toContain('OLDEST')
-    expect(out).toContain('…')
-    expect(out).not.toContain('lorem ipsum '.repeat(20))
+    const prompts = out.projects[0]!.prompts
+    expect(prompts.map((p) => p.slice(0, 6))).toEqual(['NEWEST', 'MIDDLE'])
+    expect(prompts[0]).toHaveLength(100)
+    expect(prompts[0]!.endsWith('…')).toBe(true)
   })
 
   it('keeps the newest prompts of every project even when one busy project would fill the budget', async () => {
@@ -137,9 +137,9 @@ describe('createClaudeSessionsInterestSource', () => {
       user(`QUIET 1 ${LONG}`, 5, { cwd: '/Users/me/dev/org/quiet' }),
     ])
     const out = await load({ budgetChars: 600, maxPromptChars: 100, guaranteedPrompts: 2 })
-    expect(out).toContain('QUIET 0')
-    expect(out).toContain('QUIET 1')
-    expect(out.match(/BUSY/g)?.length).toBeGreaterThan(2)
+    expect(out.projects.map((p) => p.name)).toEqual(['org/busy', 'org/quiet'])
+    expect(out.projects[1]!.prompts.map((p) => p.slice(0, 7))).toEqual(['QUIET 0', 'QUIET 1'])
+    expect(out.projects[0]!.prompts.length).toBeGreaterThan(2)
   })
 
   it('groups sessions by project with worktrees folded into their repo', async () => {
@@ -149,9 +149,10 @@ describe('createClaudeSessionsInterestSource', () => {
     await session('p2', 'b', [user(LONG + ' two', 2, { cwd: '/Users/me/dev/org/repo', gitBranch: 'main' })])
     await session('p3', 'c', [user(LONG + ' three', 3, { cwd: '/Users/me/dev/other', gitBranch: 'main' })])
     const out = await load()
-    expect(out).toContain('## org/repo (branches: feat-x, main) — 2 sessions')
-    expect(out).toContain('## dev/other (branches: main) — 1 session')
-    expect(out.indexOf('org/repo')).toBeLessThan(out.indexOf('## dev/other'))
+    expect(out.projects.map((p) => [p.name, p.branches, p.sessions])).toEqual([
+      ['org/repo', ['feat-x', 'main'], 2],
+      ['dev/other', ['main'], 1],
+    ])
   })
 
   it('redacts obvious secrets in prompts and titles', async () => {
@@ -160,10 +161,10 @@ describe('createClaudeSessionsInterestSource', () => {
       user(`Use Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig and mail me@example.com ${LONG}`, 1),
     ])
     const out = await load()
-    expect(out).not.toContain('ghp_')
-    expect(out).not.toContain('eyJhbGci')
-    expect(out).not.toContain('me@example.com')
-    expect(out).toContain('[redacted]')
+    expect(text(out)).not.toContain('ghp_')
+    expect(text(out)).not.toContain('eyJhbGci')
+    expect(text(out)).not.toContain('me@example.com')
+    expect(text(out)).toContain('[redacted]')
   })
 
   it('returns [] cleanly when the projects dir does not exist', async () => {
