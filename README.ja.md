@@ -121,7 +121,7 @@ URL が digest に残ったプロンプトに出てくる記事は、すでに�
 | 隣接               | 出さない   | 関連するもの | 関連するもの |
 | まさにこれ         | 出さない   | 助けになるもの | 助けになるもの |
 
-表示順は `distance` の降順、同点なら `effect` の降順です。
+表示順は `distance` の段階、次に `effect` の段階、同点なら平均値の降順です。
 
 質問文と表は [src/questions.ts](src/questions.ts) にあります。判定を変えたいときはこのファイルだけを編集します。
 
@@ -140,7 +140,7 @@ URL が digest に残ったプロンプトに出てくる記事は、すでに�
 4. 同じ記事で取り直し、見比べる
 
    ```sh
-   jq -r '[(.answers.distance.score*10|round/10), (.answers.effect.score*10|round/10), .decision, .bookmark.title] | @tsv' verdicts.jsonl | sort -rn
+   jq -r '[.levels.distance, .levels.effect, .decision, .bookmark.title] | @tsv' verdicts.jsonl | sort -rn
    ```
 
 外れの原因が digest にあるときは `raincheck context` を読んで `--days` を変えます。

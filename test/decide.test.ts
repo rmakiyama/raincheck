@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { consulted, decide, level, rank } from '../src/decide.ts'
+import { consulted, decide, rank } from '../src/decide.ts'
 import type { Bookmark, JevAnswer, JevAnswers, RecentWork, Verdict } from '../src/types.ts'
 
 const bookmark: Bookmark = {
@@ -42,38 +42,36 @@ describe('decide', () => {
     expect(decide(bookmark, res(answers(score(0, 0.1, 0.9), score(0.2, 0.8)))).decision).toBe('skip')
   })
 
-  it('keeps every answer on the verdict untouched and records the model', () => {
-    const a = { ...answers(score(0, 0.1, 0.9), score(0.2, 0.7, 0.1)), some_future_question: { type: 'noul', noul: 0.3 } as JevAnswer }
+  it('keeps every answer on the verdict untouched, records the model and the levels it read', () => {
+    const a = {
+      ...answers(score(0, 0.1, 0.9), score(0.2, 0.7, 0.1)),
+      depth: score(0.4, 0.4, 0.1, 0.1),
+      some_future_question: { type: 'noul', noul: 0.3 } as JevAnswer,
+    }
     const v = decide(bookmark, { model: 'jev-9.9.9', answers: a })
     expect(v.answers).toBe(a)
     expect(v.model).toBe('jev-9.9.9')
-  })
-})
-
-describe('level', () => {
-  it('picks the most likely level, the lower one on a tie', () => {
-    expect(level({ depth: score(0.1, 0.2, 0.3, 0.4) }, 'depth')).toBe(3)
-    expect(level({ depth: score(0.4, 0.4, 0.1, 0.1) }, 'depth')).toBe(0)
+    // depth: a tie between levels 0 and 1 goes to the lower one
+    expect(v.levels).toEqual({ distance: 2, effect: 1, depth: 0 })
   })
 })
 
 describe('rank', () => {
-  const at = (mean: number): JevAnswer => ({ type: 'score', score: mean, confidence: 1, legend: {}, probabilities: {} })
-  const v = (id: string, distance: number, effect: number): Verdict => ({
-    bookmark: { ...bookmark, id },
-    answers: answers(at(distance), at(effect)),
-    model: 'jev-1.13.0',
-    decision: 'helps',
-  })
+  const v = (id: string, distance: JevAnswer, effect: JevAnswer): Verdict => decide({ ...bookmark, id }, res(answers(distance, effect)))
 
-  it('orders by distance descending, then effect descending', () => {
-    const out = rank([v('a', 1.2, 2), v('b', 1.9, 0.5), v('c', 1.9, 1.5), v('d', 0.3, 0)])
+  it('orders by distance level, then effect level, then the mean scores', () => {
+    const out = rank([
+      v('a', score(0, 0.6, 0.4), score(0.1, 0.1, 0.8)), // levels 1/2, mean 1.4
+      v('b', score(0.3, 0, 0.7), score(0.3, 0.6, 0.1)), // levels 2/1, mean 1.4
+      v('c', score(0, 0.1, 0.9), score(0.3, 0.6, 0.1)), // levels 2/1, mean 1.9
+      v('d', score(0.9, 0.1, 0), score(0.1, 0.1, 0.8)), // levels 0/2
+    ])
     expect(out.map((x) => x.bookmark.id)).toEqual(['c', 'b', 'a', 'd'])
   })
 
-  it('puts a verdict without answers last and does not mutate the input', () => {
+  it('puts a verdict without levels last and does not mutate the input', () => {
     const consultedVerdict: Verdict = { bookmark: { ...bookmark, id: 'x' }, answers: {}, decision: 'consulted' }
-    const input = [consultedVerdict, v('a', 0.3, 0)]
+    const input = [consultedVerdict, v('a', score(0.9, 0.1, 0), score(0.9, 0.1, 0))]
     expect(rank(input).map((x) => x.bookmark.id)).toEqual(['a', 'x'])
     expect(input[0]!.bookmark.id).toBe('x')
   })

@@ -143,5 +143,7 @@ export type Verdict = {
   answers: JevAnswers
   /** The model ID Jev reported, e.g. `jev-1.13.0`; versioned even when an alias was requested. Absent when not judged. */
   model?: string
+  /** The level `decide` read from each Score answer it could read, by question id; what `decision` was looked up with. Absent when not judged. */
+  levels?: Record<string, number>
   decision: Decision
 }

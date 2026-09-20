@@ -1,4 +1,3 @@
-import { level } from '../decide.ts'
 import { DEPTH_LABELS } from '../questions.ts'
 import type { Sink, Verdict } from '../types.ts'
 import type { Writer } from './jsonl.ts'
@@ -25,7 +24,7 @@ export function createStdoutSink(out: Writer, opts: { top?: number } = {}): Sink
         for (const v of shown) {
           out.write(`${v.bookmark.title}\n`)
           out.write(`  ${v.bookmark.url}\n`)
-          const depth = level(v.answers, 'depth')
+          const depth = v.levels?.depth
           if (depth !== undefined) out.write(`  ${DEPTH_LABELS[depth]}\n`)
           out.write('\n')
         }

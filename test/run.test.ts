@@ -100,6 +100,7 @@ describe('run', () => {
       ['raindrop:1', 'consulted'],
     ])
     expect(sink.got[1]).toEqual({ bookmark: seen, answers: {}, decision: 'consulted' })
+    expect(sink.got[0]!.levels).toEqual({ distance: 2, effect: 1, depth: 2 })
   })
 
   it('builds state from recent work and the bookmark only', async () => {
@@ -181,6 +182,7 @@ describe('sinks', () => {
     bookmark: bookmark(n),
     answers: fixture.answers as JevAnswers,
     model: fixture.model,
+    levels: { distance: 2, effect: 1, depth: 2 },
     decision,
   })
 

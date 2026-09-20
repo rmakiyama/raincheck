@@ -121,7 +121,7 @@ For `distance` and `effect` the most likely level is taken (the lower one on a t
 | touches it | skip | related | related |
 | the subject itself | skip | helps | helps |
 
-Articles are ordered by `distance` descending, then by `effect` descending.
+Articles are ordered by their `distance` level, then their `effect` level, then the two mean scores.
 
 The wording of the questions and the table live in [src/questions.ts](src/questions.ts). To change how articles are judged, edit that file and nothing else.
 
@@ -140,7 +140,7 @@ Rather than deciding up front what you want to read, look at what came out and p
 4. Judge the same articles again and compare
 
    ```sh
-   jq -r '[(.answers.distance.score*10|round/10), (.answers.effect.score*10|round/10), .decision, .bookmark.title] | @tsv' verdicts.jsonl | sort -rn
+   jq -r '[.levels.distance, .levels.effect, .decision, .bookmark.title] | @tsv' verdicts.jsonl | sort -rn
    ```
 
 When the digest is at fault, read `raincheck context` and adjust `--days`.

@@ -31,12 +31,17 @@ function bareUrl(url: string): string {
 
 /** Pure. `res.answers` is stored on the verdict as-is, not copied. */
 export function decide(bookmark: Bookmark, res: Pick<JevResponse, 'model' | 'answers'>): Verdict {
-  return { bookmark, answers: res.answers, model: res.model, decision: decision(res.answers) }
+  const levels: Record<string, number> = {}
+  for (const id of Object.keys(QUESTIONS) as (keyof typeof QUESTIONS)[]) {
+    const l = level(res.answers, id)
+    if (l !== undefined) levels[id] = l
+  }
+  return { bookmark, answers: res.answers, model: res.model, levels, decision: decision(levels) }
 }
 
-function decision(answers: JevAnswers): Decision {
-  const distance = level(answers, 'distance')
-  const effect = level(answers, 'effect')
+function decision(levels: Record<string, number>): Decision {
+  const distance = levels.distance
+  const effect = levels.effect
   // Skip rather than throw: the verdict still reaches the sink with its
   // answers attached, which is what makes the bad answer diagnosable.
   if (distance === undefined || effect === undefined) return 'skip'
@@ -50,7 +55,7 @@ function decision(answers: JevAnswers): Decision {
  * others. `undefined` when the answer is missing, not a Score, or lacks a
  * probability for some level.
  */
-export function level(answers: JevAnswers, id: keyof typeof QUESTIONS): number | undefined {
+function level(answers: JevAnswers, id: keyof typeof QUESTIONS): number | undefined {
   const a = answers[id]
   if (a?.type !== 'score') return undefined
   let best: number | undefined
@@ -62,16 +67,27 @@ export function level(answers: JevAnswers, id: keyof typeof QUESTIONS): number |
   return best
 }
 
-/** `distance` descending, ties broken by `effect` descending. Returns a new array. */
+/**
+ * `distance` level descending, then `effect` level descending, then the
+ * two mean scores the same way. Verdicts without levels go last. Returns a
+ * new array.
+ */
 export function rank(verdicts: Verdict[]): Verdict[] {
+  const keys = (v: Verdict) => [
+    v.levels?.distance ?? -1,
+    v.levels?.effect ?? -1,
+    mean(v, 'distance'),
+    mean(v, 'effect'),
+  ]
   return [...verdicts].sort((a, b) => {
-    const d = score(b, 'distance') - score(a, 'distance')
-    if (d !== 0) return d
-    return score(b, 'effect') - score(a, 'effect')
+    const ka = keys(a)
+    const kb = keys(b)
+    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return kb[i]! - ka[i]!
+    return 0
   })
 }
 
-function score(v: Verdict, id: string): number {
+function mean(v: Verdict, id: string): number {
   const a = v.answers[id]
   return a?.type === 'score' ? a.score : -1
 }
