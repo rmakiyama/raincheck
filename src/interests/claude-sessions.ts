@@ -13,6 +13,8 @@ export type ClaudeSessionsOptions = {
   dir?: string
   /** Window, by each record's own timestamp. @default 7 */
   days?: number
+  /** Read only this session, in full; `days` then does not apply. The id is the session file's name without `.jsonl`. */
+  session?: string
   /** Replaced in tests. @default Date.now */
   now?: () => number
   /** Total characters of prompt excerpts; titles and headings are not counted. @default 6000 */
@@ -55,20 +57,46 @@ type SessionRecord = {
 }
 
 /**
- * InterestSource that turns recent Claude Code sessions under `dir` into
- * `RecentWork`. Jev cannot summarize, so all compression is done here.
- * Rejects when no session has activity inside the window.
+ * The id of the session a command is running inside: Claude Code hands it to
+ * the shell as `CLAUDE_CODE_SESSION_ID`. `undefined` outside a session; an
+ * empty value counts as unset.
+ */
+export function currentSessionId(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.CLAUDE_CODE_SESSION_ID || undefined
+}
+
+/**
+ * InterestSource that turns Claude Code sessions under `dir` into
+ * `RecentWork`: those active inside the window, or with `session`, that one
+ * alone. Jev cannot summarize, so all compression is done here. Rejects when
+ * there is no session to describe.
  */
 export function createClaudeSessionsInterestSource(opts: ClaudeSessionsOptions = {}): InterestSource {
   const dir = opts.dir ?? join(homedir(), '.claude', 'projects')
   const days = opts.days ?? 7
   const now = opts.now ?? Date.now
-  const budgetChars = opts.budgetChars ?? 6000
-  const guaranteedPrompts = opts.guaranteedPrompts ?? 3
-  const maxPromptChars = opts.maxPromptChars ?? 300
-  const minPromptChars = opts.minPromptChars ?? 40
   const home = opts.home ?? homedir()
+  const shape: SelectOptions = {
+    budgetChars: opts.budgetChars ?? 6000,
+    guaranteedPrompts: opts.guaranteedPrompts ?? 3,
+    maxPromptChars: opts.maxPromptChars ?? 300,
+    minPromptChars: opts.minPromptChars ?? 40,
+  }
 
+  if (opts.session !== undefined) {
+    const id = opts.session
+    return {
+      name: `claude-sessions:${id}`,
+      async load(): Promise<RecentWork> {
+        if (id !== basename(id)) throw new Error(`"${id}" is not a session id`)
+        const path = await findSessionFile(dir, id)
+        if (!path) throw new Error(`no Claude Code session ${id} under ${dir}`)
+        const session = await readSession(path, 0, home)
+        if (!session) throw new Error(`Claude Code session ${id} has no dated records`)
+        return select([session], shape)
+      },
+    }
+  }
   return {
     name: `claude-sessions:${days}d`,
     async load(): Promise<RecentWork> {
@@ -77,22 +105,39 @@ export function createClaudeSessionsInterestSource(opts: ClaudeSessionsOptions =
       if (sessions.length === 0) {
         throw new Error(`no Claude Code sessions in the last ${days} days under ${dir}`)
       }
-      return select(sessions, { days, budgetChars, guaranteedPrompts, maxPromptChars, minPromptChars })
+      return { days, ...select(sessions, shape) }
     },
   }
 }
 
-async function collectSessions(dir: string, since: number, home: string): Promise<Session[]> {
-  const sessions: Session[] = []
-  let projectDirs: string[]
+async function listProjectDirs(dir: string): Promise<string[]> {
   try {
-    projectDirs = await readdir(dir)
+    return await readdir(dir)
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw err
   }
+}
 
-  for (const p of projectDirs) {
+// Session files are named by their id, so each project dir is probed for the
+// one file instead of listed.
+async function findSessionFile(dir: string, id: string): Promise<string | null> {
+  for (const p of await listProjectDirs(dir)) {
+    const path = join(dir, p, `${id}.jsonl`)
+    try {
+      await stat(path)
+      return path
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw err // ENOTDIR: a file, not a dir
+    }
+  }
+  return null
+}
+
+async function collectSessions(dir: string, since: number, home: string): Promise<Session[]> {
+  const sessions: Session[] = []
+  for (const p of await listProjectDirs(dir)) {
     const projectDir = join(dir, p)
     let files: string[]
     try {
@@ -197,7 +242,7 @@ export function redact(text: string): string {
 
 /** The digest-shaping options, with defaults already applied. */
 export type SelectOptions = Required<
-  Pick<ClaudeSessionsOptions, 'days' | 'budgetChars' | 'guaranteedPrompts' | 'maxPromptChars' | 'minPromptChars'>
+  Pick<ClaudeSessionsOptions, 'budgetChars' | 'guaranteedPrompts' | 'maxPromptChars' | 'minPromptChars'>
 >
 
 // Claude Code stores some of its own plumbing as `user` records with string
@@ -235,8 +280,8 @@ type Candidate = { at: number; session: Session; text: string }
  * stop at the first excerpt that does not fit; a shorter, older one is not
  * picked in its place. Without the guarantees one busy day pushes every other
  * project out, and a long session pushes out the prompt that says what it is
- * for. A session's "opening" prompt is its oldest excerpt inside the window
- * that survived the filters above, which for a session begun before the
+ * for. A session's "opening" prompt is the oldest excerpt it was given that
+ * survived the filters above, which for a session begun before a `days`
  * window is not its first message.
  */
 export function select(sessions: Session[], o: SelectOptions): RecentWork {
@@ -300,7 +345,7 @@ export function select(sessions: Session[], o: SelectOptions): RecentWork {
       prompts: (candidatesOf.get(name) ?? []).filter((c) => kept.has(c)).map((c) => c.text),
     })
   }
-  return { days: o.days, projects }
+  return { projects }
 }
 
 function normalize(text: string): string {

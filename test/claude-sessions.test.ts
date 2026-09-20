@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createClaudeSessionsInterestSource,
+  currentSessionId,
   isPlumbing,
   projectName,
   redact,
@@ -180,6 +181,43 @@ describe('createClaudeSessionsInterestSource', () => {
   it('returns [] cleanly when the projects dir does not exist', async () => {
     await expect(load({ dir: join(dir, 'nope') })).rejects.toThrow('no Claude Code sessions')
   })
+
+  describe('with session', () => {
+    it('reads that session whole, whichever project it is under, and no other', async () => {
+      await session('p', 'a', [user('OTHER ' + LONG, 1)])
+      await session('q', 'b', [title('This one'), user('OLD ' + LONG, 30), user('NEW ' + LONG, 1)])
+      await writeFile(join(dir, 'stray'), '') // a file among the project dirs
+      const out = await load({ session: 'b' })
+      expect(out.days).toBeUndefined()
+      expect(out.projects).toEqual([
+        { name: 'org/repo', branches: ['main'], sessions: 1, titles: ['This one'], prompts: ['NEW ' + LONG, 'OLD ' + LONG] },
+      ])
+    })
+
+    it('fails when no project has that session', async () => {
+      await session('p', 'a', [user(LONG, 1)])
+      await expect(load({ session: 'b' })).rejects.toThrow('no Claude Code session b')
+      await expect(load({ session: 'b', dir: join(dir, 'nope') })).rejects.toThrow('no Claude Code session b')
+    })
+
+    it('tells an empty session file apart from a missing one', async () => {
+      await session('p', 'a', [])
+      await expect(load({ session: 'a' })).rejects.toThrow('session a has no dated records')
+    })
+
+    it('rejects an id that would name a file outside the projects dir', async () => {
+      await session('p', 'a', [user(LONG, 1)])
+      await expect(load({ session: '../p/a' })).rejects.toThrow('not a session id')
+    })
+  })
+})
+
+describe('currentSessionId', () => {
+  it('reads CLAUDE_CODE_SESSION_ID; empty counts as unset', () => {
+    expect(currentSessionId({ CLAUDE_CODE_SESSION_ID: 'abc' })).toBe('abc')
+    expect(currentSessionId({ CLAUDE_CODE_SESSION_ID: '' })).toBeUndefined()
+    expect(currentSessionId({})).toBeUndefined()
+  })
 })
 
 describe('select', () => {
@@ -193,7 +231,7 @@ describe('select', () => {
   // 50 chars each so budgets below count in whole prompts; words, not a run of
   // one letter, or `redact` would treat the padding as a token.
   const P = (tag: string) => `${tag} lorem ipsum dolor sit amet consectetur adipiscing elit`.slice(0, 50)
-  const opts = { days: 7, budgetChars: 500, guaranteedPrompts: 3, maxPromptChars: 300, minPromptChars: 40 }
+  const opts = { budgetChars: 500, guaranteedPrompts: 3, maxPromptChars: 300, minPromptChars: 40 }
 
   it('gives every session its opening prompt and every project its newest prompts, then spends the rest newest-first', () => {
     const busy = session('busy', 1, Array.from({ length: 20 }, (_, i) => prompt(P(`busy${i}`), 1 + i / 100)))

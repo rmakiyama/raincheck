@@ -99,7 +99,8 @@ export type RecentProject = {
  * it again before it leaves the machine.
  */
 export type RecentWork = {
-  days: number
+  /** The window the digest covers. Absent when it is one whole session instead. */
+  days?: number
   /** Most recent activity first. */
   projects: RecentProject[]
 }

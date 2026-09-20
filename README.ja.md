@@ -65,17 +65,28 @@ URL の下の 1 行は、読むのにかかる労力です。どちらの節に�
 | `--top N`         | 各節に表示する記事の件数の上限（既定: 全件）                                           |
 | `--limit N`       | Raindrop から取得する記事の件数。新しい順（既定: 全件）                                    |
 | `--days N`        | Claude Code のセッションを遡る日数（既定 7）                                        |
+| `--current`       | 実行元の Claude Code セッション 1 つだけを、期間を区切らず使う。`--days` の代わり。[セッションの中から](#セッションの中から) を参照 |
 | `--jsonl`         | 出力を JSONL にする。表示しない記事も含み、確率をすべて持つ                                    |
 | `--collection=ID` | 取得する Raindrop のコレクション。`0` = 全件、`-1` = Unsorted（既定 0）。負の ID は `=` で指定 |
 | `--concurrency N` | Jev へのリクエストの並列数（既定 10）                                        |
 
 ### 既定値
 
-`--jsonl` 以外のフラグは `~/.config/raincheck/config.json` で既定値を変えられます。コマンドラインのフラグが優先です。
+`--current` と `--jsonl` 以外のフラグは `~/.config/raincheck/config.json` で既定値を変えられます。コマンドラインのフラグが優先です。
 
 ```json
 { "days": 14, "top": 5 }
 ```
+
+### セッションの中から
+
+Claude 自身にセッション内で実行させると、`--current` でそのセッション 1 つだけを判定材料にできます。
+
+```sh
+raincheck --current --top 5
+```
+
+セッションは Claude Code が設定する `CLAUDE_CODE_SESSION_ID` で特定します。普通のターミナルからは使えません。
 
 ## State
 
@@ -143,7 +154,7 @@ URL が digest に残ったプロンプトに出てくる記事は、すでに�
    jq -r '[.levels.distance, .levels.effect, .decision, .bookmark.title] | @tsv' verdicts.jsonl | sort -rn
    ```
 
-外れの原因が digest にあるときは `raincheck context` を読んで `--days` を変えます。
+外れの原因が digest にあるときは `raincheck context` を読んで `--days` を変えるか、`--current` でいまのセッションに絞ります。
 
 ## 開発
 
