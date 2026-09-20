@@ -18,11 +18,11 @@ Node 24 runs the TypeScript source directly, so only erasable syntax is allowed 
 
 ## Structure
 
-- `src/types.ts` defines `Bookmark`, `Verdict`, and the four boundaries: `BookmarkSource`, `InterestSource`, `JevAsker`, `Sink`. It imports nothing from `src/`.
+- `src/types.ts` defines `Bookmark`, `RecentWork`, `Verdict`, and the four boundaries: `BookmarkSource`, `InterestSource`, `JevAsker`, `Sink`. It imports nothing from `src/`.
 - `src/run.ts` depends only on those boundaries plus `decide.ts` and `questions.ts`. It never imports an adapter.
 - Adapters (`raindrop/`, `jev/`, `interests/`, `sinks/`) never import each other. `cli.ts` assembles them.
-- `src/questions.ts` is the whole judgment policy: questions, state shape, threshold. Do not put thresholds or question text anywhere else.
-- `src/decide.ts` is pure. Keep it free of I/O and clocks.
+- `src/questions.ts` is the whole judgment policy: questions, state shape, the outcome table. Do not put question text or outcome rules anywhere else.
+- `src/decide.ts` turns answers into a verdict: which level a Score lands on, the `OUTCOME` lookup, the `consulted` rule, ranking. It is pure; keep it free of I/O and clocks.
 - `src/config.ts` owns both files under `~/.config/raincheck/` (`credentials.json`: secrets, 0600; `config.json`: flag defaults) and the whole option pipeline: `OPTIONS` is the one rule a flag and its file key are both checked against, and `resolveOptions` merges flag > file > `DEFAULTS`. A new tunable goes there; `cli.ts` only passes `parseArgs` output through.
 
 ## Constraints

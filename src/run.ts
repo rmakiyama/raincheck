@@ -1,4 +1,4 @@
-import { decide, rank } from './decide.ts'
+import { consulted, decide, rank } from './decide.ts'
 import { QUESTIONS, buildState } from './questions.ts'
 import type {
   InterestSource,
@@ -6,7 +6,6 @@ import type {
   BookmarkSource,
   JevAsker,
   Sink,
-  Thresholds,
   Verdict,
 } from './types.ts'
 
@@ -15,7 +14,6 @@ export type RunOptions = {
   interests: InterestSource
   jev: JevAsker
   sink: Sink
-  thresholds: Thresholds
   /** Passed through to `bookmarks.fetch`. */
   limit?: number
   /** Parallel Jev calls. Values below 1 are treated as 1. @default 10 */
@@ -37,10 +35,11 @@ export type RunResult = {
 }
 
 /**
- * Loads the digest, judges every bookmark with bounded parallelism, ranks, and
- * emits once. All I/O arrives through `opts`; nothing here touches the network
- * or filesystem directly. Rejects only if `interests.load()` or `sink.emit()`
- * rejects — per-bookmark and source failures are reported in the result instead.
+ * Loads the digest, judges every bookmark the person has not already
+ * consulted with bounded parallelism, ranks, and emits once. All I/O arrives
+ * through `opts`; nothing here touches the network or filesystem directly.
+ * Rejects only if `interests.load()` or `sink.emit()` rejects — per-bookmark
+ * and source failures are reported in the result instead.
  */
 export async function run(opts: RunOptions): Promise<RunResult> {
   const interests = await opts.interests.load()
@@ -51,11 +50,15 @@ export async function run(opts: RunOptions): Promise<RunResult> {
   let failed = 0
 
   const judge = async (bookmark: Bookmark) => {
+    if (consulted(interests, bookmark)) {
+      verdicts.push({ bookmark, answers: {}, decision: 'consulted' })
+      return
+    }
     try {
       const res = await opts.jev.ask(buildState(interests, bookmark), QUESTIONS)
       usage.input_tokens += res.usage?.input_tokens ?? 0
       usage.output_tokens += res.usage?.output_tokens ?? 0
-      verdicts.push(decide(bookmark, res.answers, opts.thresholds))
+      verdicts.push(decide(bookmark, res))
     } catch (err) {
       failed++
       opts.onError?.(bookmark, err)

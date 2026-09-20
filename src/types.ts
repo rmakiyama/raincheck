@@ -84,11 +84,31 @@ export interface BookmarkSource {
   fetch(opts: { limit?: number }): AsyncIterable<Bookmark>
 }
 
-/** Produces the text Jev sees as `recent_work`. */
+/** One project's share of `RecentWork`. */
+export type RecentProject = {
+  name: string
+  branches: string[]
+  sessions: number
+  titles: string[]
+  /** Newest first. */
+  prompts: string[]
+}
+
+/**
+ * What Jev sees as `recent_work`. Already redacted: nothing downstream masks
+ * it again before it leaves the machine.
+ */
+export type RecentWork = {
+  days: number
+  /** Most recent activity first. */
+  projects: RecentProject[]
+}
+
+/** Produces what Jev sees as `recent_work`. */
 export interface InterestSource {
   readonly name: string
-  /** Resolves to non-empty text. Rejects when there is nothing to describe. */
-  load(): Promise<string>
+  /** Resolves with at least one project. Rejects when there is nothing to describe. */
+  load(): Promise<RecentWork>
 }
 
 /** One round-trip to Jev. */
@@ -110,16 +130,20 @@ export interface Sink {
  */
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>
 
-export type Decision = 'surface' | 'skip'
+/**
+ * `helps` and `related` are the two sections shown; `skip` is not shown;
+ * `consulted`: the person's own prompts already refer to the article, so it
+ * was not judged.
+ */
+export type Decision = 'helps' | 'related' | 'skip' | 'consulted'
 
 export type Verdict = {
   bookmark: Bookmark
-  /** Every answer Jev returned, probabilities intact, so a decision can be traced later. */
+  /** Every answer Jev returned, probabilities intact, so a decision can be traced later. Empty when not judged. */
   answers: JevAnswers
+  /** The model ID Jev reported, e.g. `jev-1.13.0`; versioned even when an alias was requested. Absent when not judged. */
+  model?: string
+  /** The level `decide` read from each Score answer it could read, by question id; what `decision` was looked up with. Absent when not judged. */
+  levels?: Record<string, number>
   decision: Decision
-}
-
-export type Thresholds = {
-  /** Surface when `answers.relevant.noul >= relevant` (inclusive). */
-  relevant: number
 }

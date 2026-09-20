@@ -3,7 +3,7 @@ import { QUESTIONS } from '../src/questions.ts'
 import { run } from '../src/run.ts'
 import { createJsonlSink } from '../src/sinks/jsonl.ts'
 import { createStdoutSink } from '../src/sinks/stdout.ts'
-import type { Bookmark, BookmarkSource, JevAnswers, JevAsker, JevResponse, Sink, Verdict } from '../src/types.ts'
+import type { Bookmark, BookmarkSource, JevAnswers, JevAsker, JevResponse, RecentWork, Sink, Verdict } from '../src/types.ts'
 import fixture from './fixtures/jev-response.json' with { type: 'json' }
 
 const bookmark = (n: number): Bookmark => ({
@@ -21,9 +21,13 @@ const source = (bookmarks: Bookmark[]): BookmarkSource => ({
   },
 })
 
-const interests = { name: 'stub', load: async () => 'Working on a Compose list screen' }
+const recentWork: RecentWork = {
+  days: 7,
+  projects: [{ name: 'org/app', branches: ['main'], sessions: 1, titles: [], prompts: ['Working on a Compose list screen'] }],
+}
+const interests = { name: 'stub', load: async () => recentWork }
 
-// Answers relevant = 1 / (n+1) so ids map to distinct probabilities.
+// Answers put all of distance on level 2 - n (n=0 → helps, n=1 → related, n=2 → skip) and effect on level 1.
 const jevByTitle = (fail: number[] = []): JevAsker & { states: unknown[]; inFlight: number; peak: number } => {
   const asker = {
     states: [] as unknown[],
@@ -38,7 +42,14 @@ const jevByTitle = (fail: number[] = []): JevAsker & { states: unknown[]; inFlig
       asker.states.push(state)
       const n = Number(/Article (\d+)/.exec((state as { article: { title: string } }).article.title)![1])
       if (fail.includes(n)) throw new Error(`boom ${n}`)
-      const answers: JevAnswers = { ...(fixture.answers as JevAnswers), relevant: { type: 'noul', noul: 1 / (n + 1) } }
+      const on = (lvl: number) => ({
+        type: 'score' as const,
+        score: lvl,
+        confidence: 1,
+        legend: {},
+        probabilities: { '0': 0, '1': 0, '2': 0, [String(lvl)]: 1 },
+      })
+      const answers: JevAnswers = { ...(fixture.answers as JevAnswers), distance: on(Math.max(0, 2 - n)), effect: on(1) }
       return { model: 'jev-1.13.0', answers, usage: { input_tokens: 100, output_tokens: 10 } }
     },
   }
@@ -63,13 +74,33 @@ describe('run', () => {
       bookmarks: source([bookmark(2), bookmark(0), bookmark(1)]),
       interests,
       jev,
-      sink,
-      thresholds: { relevant: 0.4 },
+      sink
     })
     expect(sink.got.map((v) => v.bookmark.id)).toEqual(['raindrop:0', 'raindrop:1', 'raindrop:2'])
-    expect(sink.got.map((v) => v.decision)).toEqual(['surface', 'surface', 'skip'])
+    expect(sink.got.map((v) => v.decision)).toEqual(['helps', 'related', 'skip'])
+    expect(sink.got.map((v) => v.model)).toEqual(['jev-1.13.0', 'jev-1.13.0', 'jev-1.13.0'])
     expect(result.usage).toEqual({ input_tokens: 300, output_tokens: 30 })
     expect(result.failed).toBe(0)
+  })
+
+  it('does not judge a bookmark the prompts already refer to, and emits it as consulted', async () => {
+    const sink = capture()
+    const jev = jevByTitle()
+    const seen = { ...bookmark(1), url: 'https://example.com/seen' }
+    const work: RecentWork = { ...recentWork, projects: [{ ...recentWork.projects[0]!, prompts: ['look at https://example.com/seen/ first'] }] }
+    await run({
+      bookmarks: source([bookmark(0), seen]),
+      interests: { name: 'stub', load: async () => work },
+      jev,
+      sink
+    })
+    expect(jev.states).toHaveLength(1)
+    expect(sink.got.map((v) => [v.bookmark.id, v.decision])).toEqual([
+      ['raindrop:0', 'helps'],
+      ['raindrop:1', 'consulted'],
+    ])
+    expect(sink.got[1]).toEqual({ bookmark: seen, answers: {}, decision: 'consulted' })
+    expect(sink.got[0]!.levels).toEqual({ distance: 2, effect: 1, depth: 2 })
   })
 
   it('builds state from recent work and the bookmark only', async () => {
@@ -78,18 +109,17 @@ describe('run', () => {
       bookmarks: source([{ ...bookmark(0), note: 'n', tags: ['t'], highlights: ['h'] }]),
       interests,
       jev,
-      sink: capture(),
-      thresholds: { relevant: 0.5 },
+      sink: capture()
     })
     expect(jev.states[0]).toEqual({
-      recent_work: 'Working on a Compose list screen',
+      recent_work: recentWork,
       article: { title: 'Article 0', note: 'n', tags: ['t'], highlights: ['h'] },
     })
   })
 
   it('passes limit to the source', async () => {
     const jev = jevByTitle()
-    await run({ bookmarks: source([bookmark(0), bookmark(1), bookmark(2)]), interests, jev, sink: capture(), thresholds: { relevant: 0.5 }, limit: 2 })
+    await run({ bookmarks: source([bookmark(0), bookmark(1), bookmark(2)]), interests, jev, sink: capture(), limit: 2 })
     expect(jev.states).toHaveLength(2)
   })
 
@@ -101,7 +131,6 @@ describe('run', () => {
       interests,
       jev: jevByTitle([1]),
       sink,
-      thresholds: { relevant: 0.5 },
       onError: (it, err) => errors.push(`${it.id}:${(err as Error).message}`),
     })
     expect(result.failed).toBe(1)
@@ -119,14 +148,14 @@ describe('run', () => {
         throw new Error('Raindrop HTTP 500: page 1')
       },
     }
-    const result = await run({ bookmarks: failing, interests, jev: jevByTitle(), sink, thresholds: { relevant: 0.5 } })
+    const result = await run({ bookmarks: failing, interests, jev: jevByTitle(), sink })
     expect(sink.got.map((v) => v.bookmark.id)).toEqual(['raindrop:0', 'raindrop:1'])
     expect((result.sourceError as Error).message).toBe('Raindrop HTTP 500: page 1')
   })
 
   it('never spawns zero workers', async () => {
     const jev = jevByTitle()
-    await run({ bookmarks: source([bookmark(0)]), interests, jev, sink: capture(), thresholds: { relevant: 0.5 }, concurrency: 0 })
+    await run({ bookmarks: source([bookmark(0)]), interests, jev, sink: capture(), concurrency: 0 })
     expect(jev.states).toHaveLength(1)
   })
 
@@ -137,7 +166,6 @@ describe('run', () => {
       interests,
       jev,
       sink: capture(),
-      thresholds: { relevant: 0.5 },
       concurrency: 3,
     })
     expect(jev.peak).toBe(3)
@@ -153,29 +181,51 @@ describe('sinks', () => {
   const v = (n: number, decision: Verdict['decision']): Verdict => ({
     bookmark: bookmark(n),
     answers: fixture.answers as JevAnswers,
+    model: fixture.model,
+    levels: { distance: 2, effect: 1, depth: 2 },
     decision,
   })
 
   it('jsonl writes one full verdict per line', async () => {
     const w = writer()
-    await createJsonlSink(w).emit([v(0, 'surface'), v(1, 'skip')])
+    await createJsonlSink(w).emit([v(0, 'helps'), v(1, 'skip')])
     const lines = w.text.trimEnd().split('\n')
     expect(lines).toHaveLength(2)
     expect(JSON.parse(lines[1]!)).toEqual(v(1, 'skip'))
   })
 
-  it('stdout prints only surfaced bookmarks, capped by top', async () => {
+  it('stdout prints helps and related under their headings, capped by top per section, with a depth label', async () => {
     const w = writer()
-    await createStdoutSink(w, { top: 1 }).emit([v(0, 'surface'), v(1, 'surface'), v(2, 'skip')])
-    expect(w.text).toContain('1 of 3 worth cashing in today')
-    expect(w.text).toContain('Article 0')
-    expect(w.text).not.toContain('Article 1')
-    expect(w.text).toContain('relevant=0.91')
+    await createStdoutSink(w, { top: 1 }).emit([v(0, 'helps'), v(1, 'helps'), v(2, 'related'), v(3, 'skip'), v(4, 'consulted')])
+    expect(w.text).toBe(
+      [
+        'Helps with what you are doing now',
+        '',
+        'Article 0',
+        '  https://example.com/0',
+        '  a sitting',
+        '',
+        'Related to what you are doing now',
+        '',
+        'Article 2',
+        '  https://example.com/2',
+        '  a sitting',
+        '',
+        '',
+      ].join('\n'),
+    )
   })
 
-  it('stdout says so when nothing surfaces', async () => {
+  it('stdout leaves out an empty section', async () => {
     const w = writer()
-    await createStdoutSink(w).emit([v(0, 'skip')])
-    expect(w.text).toBe('nothing worth cashing in today (1 judged)\n')
+    await createStdoutSink(w).emit([v(0, 'related')])
+    expect(w.text).not.toContain('Helps')
+    expect(w.text).toContain('Related to what you are doing now')
+  })
+
+  it('stdout says so when nothing is shown', async () => {
+    const w = writer()
+    await createStdoutSink(w).emit([v(0, 'skip'), v(1, 'consulted')])
+    expect(w.text).toBe('nothing worth cashing in today\n')
   })
 })

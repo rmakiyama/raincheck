@@ -15,6 +15,7 @@ import { createJevClient } from './jev/client.ts'
 import { JEV_MODEL } from './questions.ts'
 import { createRaindropSource } from './raindrop/source.ts'
 import { run } from './run.ts'
+import type { Verdict } from './types.ts'
 import { createJsonlSink } from './sinks/jsonl.ts'
 import { createStdoutSink } from './sinks/stdout.ts'
 
@@ -26,9 +27,8 @@ usage: raincheck [options]        judge bookmarks against recent Claude Code ses
 
   --days N          look back N days of Claude Code sessions (default: ${DEFAULTS.days})
   --limit N         fetch and judge at most N bookmarks (default: all)
-  --top N           print at most N surfaced bookmarks (default: all surfaced)
-  --threshold X     surface when relevant >= X (default: ${DEFAULTS.threshold})
-  --jsonl           write every verdict (surfaced or not) as JSONL to stdout
+  --top N           print at most N bookmarks per section (default: all)
+  --jsonl           write every verdict (shown or not) as JSONL to stdout
   --collection=ID   Raindrop collection: 0 = all, -1 = Unsorted (default: ${DEFAULTS.collection}).
                     Negative ids need the = form: --collection=-1
   --concurrency N   parallel Jev calls (default: ${DEFAULTS.concurrency})
@@ -50,7 +50,6 @@ async function main(): Promise<number> {
       days: { type: 'string' },
       limit: { type: 'string' },
       top: { type: 'string' },
-      threshold: { type: 'string' },
       jsonl: { type: 'boolean', default: false },
       collection: { type: 'string' },
       concurrency: { type: 'string' },
@@ -83,7 +82,7 @@ async function main(): Promise<number> {
   const interests = createClaudeSessionsInterestSource({ days: options.days })
 
   if (command === 'context') {
-    process.stdout.write(await interests.load())
+    process.stdout.write(JSON.stringify(await interests.load(), null, 2) + '\n')
     return 0
   }
 
@@ -102,7 +101,6 @@ async function main(): Promise<number> {
     interests,
     jev: createJevClient({ apiKey, model: JEV_MODEL }),
     sink,
-    thresholds: { relevant: options.threshold },
     limit: options.limit,
     concurrency: options.concurrency,
     onError: (bookmark, err) => {
@@ -110,16 +108,18 @@ async function main(): Promise<number> {
     },
   })
 
-  const surfaced = result.verdicts.filter((v) => v.decision === 'surface').length
+  const count = (d: Verdict['decision']) => result.verdicts.filter((v) => v.decision === d).length
+  const consulted = count('consulted')
+  const models = [...new Set(result.verdicts.map((v) => v.model).filter(Boolean))].join(',') || '-'
   process.stderr.write(
-    `judged ${result.verdicts.length}, surfaced ${surfaced}, failed ${result.failed}, ` +
-      `tokens in=${result.usage.input_tokens} out=${result.usage.output_tokens}\n`,
+    `judged ${result.verdicts.length - consulted}, helps ${count('helps')}, related ${count('related')}, consulted ${consulted}, ` +
+      `failed ${result.failed}, model=${models}, tokens in=${result.usage.input_tokens} out=${result.usage.output_tokens}\n`,
   )
   if (result.sourceError !== undefined) {
     process.stderr.write(`raincheck: source stopped early: ${describe(result.sourceError)}\n`)
     return 1
   }
-  return result.failed > 0 && result.verdicts.length === 0 ? 1 : 0
+  return result.failed > 0 && result.verdicts.length - consulted === 0 ? 1 : 0
 }
 
 function requireSecret(envName: string, fileKey: string, fileValue: string | undefined): string {

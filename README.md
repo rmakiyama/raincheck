@@ -6,7 +6,7 @@
 
 A CLI that picks, out of the bookmarks piling up in Raindrop, the ones worth reading now, judged against what you have been working on in Claude Code lately.
 
-The judging is done by [Jev](https://docs.typesafe.ai). For each article it returns probabilities for "is this related to my recent work" and "can I apply it right away", and the articles above the threshold are listed by relevance.
+The judging is done by [Jev](https://docs.typesafe.ai). For each article it rates how close its subject is to your recent work and how much reading it would change what you are doing; the two ratings decide whether the article helps with your work, is merely related to it, or is not shown.
 
 ## Install
 
@@ -39,32 +39,33 @@ raincheck --top 5
 ```
 
 ```
-3 of 24 worth cashing in today
+Helps with what you are doing now
 
 AIと開発をした半年のメモ
   https://sizu.me/rmakiyama/posts/918kx38rrnid
-  relevant=0.88  actionable=0.61  already_known=0.72  depth=1.4
+  a short read
 
 Agent Skillsと歩むAndroidのUI実装
   https://blog.kyash.co/entry/agent-skills-android-trial
-  relevant=0.79  actionable=0.55  already_known=0.36  depth=1.9
+  a sitting
+
+Related to what you are doing now
 
 抽象化とイラスト
   https://sizu.me/rmakiyama/posts/ts84sww1ezdw
-  relevant=0.63  actionable=0.18  already_known=0.11  depth=1.1
+  a short read
 
-judged 24, surfaced 3, failed 0, tokens in=95210 out=1150
+judged 24, helps 2, related 1, consulted 0, failed 0, model=jev-1.13.0, tokens in=95210 out=1150
 ```
 
-The numbers under each article are Jev's answers. See [Questions](#questions) for what they mean.
+The line under each URL is how much effort the article takes to read. Which section an article lands in is explained under [Questions](#questions).
 
 | flag | meaning |
 | --- | --- |
-| `--top N` | show at most N articles (default: every article above the threshold) |
-| `--threshold X` | show articles whose `relevant` is at least X, between 0 and 1 (default 0.6) |
+| `--top N` | show at most N articles per section (default: all) |
 | `--limit N` | fetch at most N articles from Raindrop, newest first (default: all) |
 | `--days N` | how many days of Claude Code sessions to look back (default 7) |
-| `--jsonl` | output as JSONL instead: every article, including those below the threshold, with all probabilities |
+| `--jsonl` | output as JSONL instead: every article, including those not shown, with all probabilities |
 | `--collection=ID` | which Raindrop collection to fetch. `0` = all, `-1` = Unsorted (default 0). Negative ids need the `=` form |
 | `--concurrency N` | how many Jev requests to run in parallel (default 10) |
 
@@ -100,22 +101,33 @@ raincheck context
 
 The bookmark's title, description, your note, your highlights, tags, and domain. The URL and the saved date are not sent.
 
+A bookmark whose URL appears in a prompt kept in the digest (what `raincheck context` shows) is treated as already read: it is not sent to Jev and is excluded as `consulted`.
+
 ## Questions
 
-One request per bookmark, with four questions. The questions are independent of each other; articles are never compared with one another.
+One request per bookmark, with three Score questions. The questions are independent of each other; articles are never compared with one another.
 
-| question | type | asks | used for |
+| question | levels (low → high) | used for |
+| --- | --- | --- |
+| `distance` | no contact / touches it / the subject itself (the article's main subject is what the person is working on) | **the decision** |
+| `effect` | not at all / a choice is informed / applied as is (how the current work would change after reading) | **the decision** |
+| `depth` | the title says it all / a short read / a sitting / hands-on (effort to get the value) | display only |
+
+For `distance` and `effect` the most likely level is taken (the lower one on a tie) and looked up in this table. There is no threshold.
+
+| distance \ effect | not at all | a choice is informed | applied as is |
 | --- | --- | --- | --- |
-| `relevant` | noul | does the article bear on the projects, technologies, or problems in the recent work | **the decision**: shown when at or above the threshold |
-| `actionable` | noul | does the article contain something that can be applied to the recent work right away | tiebreak in ordering |
-| `already_known` | noul | does the recent work show the article's substance already being practised | recorded only |
-| `depth` | score | how much focused effort the article demands, on 4 levels | recorded only |
+| no contact | skip | skip | skip |
+| touches it | skip | related | related |
+| the subject itself | skip | helps | helps |
 
-Articles are ordered by `relevant` descending, then by `actionable` descending.
+Articles are ordered by their `distance` level, then their `effect` level, then the two mean scores.
 
-The wording of the questions and the threshold live in [src/questions.ts](src/questions.ts). To change how articles are judged, edit that file and nothing else.
+The wording of the questions and the table live in [src/questions.ts](src/questions.ts). To change how articles are judged, edit that file and nothing else.
 
 ## Tuning
+
+Rather than deciding up front what you want to read, look at what came out and put into words why something is not needed. The reason becomes the wording of a level or a cell of the table.
 
 1. Save every verdict
 
@@ -123,14 +135,15 @@ The wording of the questions and the threshold live in [src/questions.ts](src/qu
    raincheck --jsonl > verdicts.jsonl
    ```
 
-2. Mark each line by hand: want to read, or not
-3. Compare `relevant` against your marks and pick the threshold
+2. For each shown article you do not need, write down why (the main subject is something else, already read, an overview piece)
+3. Fold the reason into a level's wording or the table in `src/questions.ts`
+4. Judge the same articles again and compare
 
    ```sh
-   jq -r '[(.answers.relevant.noul*100|round), .decision, .bookmark.title] | @tsv' verdicts.jsonl | sort -rn
+   jq -r '[.levels.distance, .levels.effect, .decision, .bookmark.title] | @tsv' verdicts.jsonl | sort -rn
    ```
 
-4. For a miss, decide whether the digest or the question wording is at fault. If the digest, read `raincheck context` and adjust `--days`. If the wording, edit `src/questions.ts`
+When the digest is at fault, read `raincheck context` and adjust `--days`.
 
 ## Development
 

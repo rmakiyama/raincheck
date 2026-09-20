@@ -1,7 +1,28 @@
 {
   "model": "jev-1.13.0",
   "answers": {
-    "relevant": { "type": "noul", "noul": 0.91 },
+    "distance": {
+      "type": "score",
+      "score": 1.9,
+      "confidence": 0.94,
+      "legend": {
+        "0": "No contact: the article's subject has nothing to do with what the person is working on or thinking through; at most they share a word.",
+        "1": "Touches it: the article's main subject is something else and only touches on what the person is working on; or it treats the same kind of question with a different object or approach.",
+        "2": "The subject itself: the article's main subject is the very thing the person is working on or thinking through, whether that is a technology, a way of working, or a question about a design or a product."
+      },
+      "probabilities": { "0": 0.0, "1": 0.06, "2": 0.94 }
+    },
+    "effect": {
+      "type": "score",
+      "score": 0.94,
+      "confidence": 0.37,
+      "legend": {
+        "0": "Not at all: it confirms what the person already does; it is general background, opinion, or news; or it is an overview or a list of practices that does not bear on a choice the person is facing.",
+        "1": "A choice is informed: it gives options, pitfalls, or a comparison that bear specifically on a choice the person is facing now — what to use, how to build something, how to proceed, what to make.",
+        "2": "Applied as is: it gives a concrete method, decision, or procedure the person can apply directly to what they are doing now."
+      },
+      "probabilities": { "0": 0.24, "1": 0.58, "2": 0.18 }
+    },
     "depth": {
       "type": "score",
       "score": 2.1,
@@ -13,8 +34,7 @@
         "3": "Requires working through it hands-on (following code, running examples, or reproducing steps)."
       },
       "probabilities": { "0": 0.02, "1": 0.16, "2": 0.52, "3": 0.30 }
-    },
-    "actionable": { "type": "noul", "noul": 0.74 }
+    }
   },
-  "usage": { "input_tokens": 412, "output_tokens": 28 }
+  "usage": { "input_tokens": 6657, "output_tokens": 142 }
 }

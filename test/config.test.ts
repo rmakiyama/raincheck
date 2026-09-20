@@ -35,14 +35,6 @@ describe('OPTIONS', () => {
     expect(OPTIONS.collection.accepts(-1)).toBe(true)
     expect(OPTIONS.collection.accepts(NaN)).toBe(false)
   })
-
-  it('holds threshold to the unit interval', () => {
-    expect(OPTIONS.threshold.accepts(0)).toBe(true)
-    expect(OPTIONS.threshold.accepts(0.6)).toBe(true)
-    expect(OPTIONS.threshold.accepts(1)).toBe(true)
-    expect(OPTIONS.threshold.accepts(1.01)).toBe(false)
-    expect(OPTIONS.threshold.accepts(NaN)).toBe(false)
-  })
 })
 
 describe('resolveOptions', () => {
@@ -55,8 +47,8 @@ describe('resolveOptions', () => {
   })
 
   it('takes a flag over config.json', () => {
-    const resolved = resolveOptions({ days: '3', threshold: '0.8', collection: '-1' }, { days: 14, threshold: 0.5 })
-    expect(resolved).toMatchObject({ days: 3, threshold: 0.8, collection: -1 })
+    const resolved = resolveOptions({ days: '3', collection: '-1' }, { days: 14, top: 5 })
+    expect(resolved).toMatchObject({ days: 3, top: 5, collection: -1 })
   })
 
   it('leaves limit and top unset when neither source has them', () => {
@@ -68,7 +60,7 @@ describe('resolveOptions', () => {
   it('rejects a flag that breaks its rule, naming the flag', () => {
     expect(() => resolveOptions({ days: '0' }, {})).toThrow(OptionError)
     expect(() => resolveOptions({ days: '0' }, {})).toThrow('--days must be an integer >= 1')
-    expect(() => resolveOptions({ threshold: '0.5abc' }, {})).toThrow('--threshold must be a number between 0 and 1')
+    expect(() => resolveOptions({ concurrency: '3abc' }, {})).toThrow('--concurrency must be an integer >= 1')
     expect(() => resolveOptions({ top: '' }, {})).toThrow('--top must be an integer >= 0')
   })
 })
@@ -90,12 +82,11 @@ describe('loadConfig', () => {
   })
 
   it('reads every option', async () => {
-    await write('{"days":14,"limit":50,"top":5,"threshold":0.5,"collection":-1,"concurrency":2}')
+    await write('{"days":14,"limit":50,"top":5,"collection":-1,"concurrency":2}')
     expect(await loadConfig({ path })).toEqual({
       days: 14,
       limit: 50,
       top: 5,
-      threshold: 0.5,
       collection: -1,
       concurrency: 2,
     })
@@ -109,8 +100,8 @@ describe('loadConfig', () => {
   it('rejects values the flag would reject, naming the key', async () => {
     await write('{"days":0}')
     await expect(loadConfig({ path })).rejects.toThrow(`${path}: "days" must be an integer >= 1`)
-    await write('{"threshold":2}')
-    await expect(loadConfig({ path })).rejects.toThrow('"threshold" must be a number between 0 and 1')
+    await write('{"concurrency":0}')
+    await expect(loadConfig({ path })).rejects.toThrow('"concurrency" must be an integer >= 1')
     await write('{"collection":1.5}')
     await expect(loadConfig({ path })).rejects.toThrow('"collection" must be an integer')
   })

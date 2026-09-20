@@ -48,7 +48,9 @@ if (!bookmark) {
 console.log('adapter: first bookmark →', JSON.stringify(bookmark, null, 2))
 
 const recentWork = await createClaudeSessionsInterestSource().load()
-console.log(`sessions: digest is ${recentWork.length} chars (see \`raincheck context\` for the text)`)
+console.log(
+  `sessions: ${recentWork.projects.length} projects, ${JSON.stringify(recentWork).length} chars as JSON (see \`raincheck context\`)`,
+)
 const jev = createJevClient({ apiKey, model: JEV_MODEL })
 const res = await jev.ask(buildState(recentWork, bookmark), QUESTIONS)
 console.log(`jev: model=${res.model} usage=${JSON.stringify(res.usage)}`)

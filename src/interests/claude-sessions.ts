@@ -6,7 +6,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import type { InterestSource } from '../types.ts'
+import type { InterestSource, RecentProject, RecentWork } from '../types.ts'
 
 export type ClaudeSessionsOptions = {
   /** @default ~/.claude/projects */
@@ -17,6 +17,11 @@ export type ClaudeSessionsOptions = {
   now?: () => number
   /** Total characters of prompt excerpts; titles and headings are not counted. @default 6000 */
   budgetChars?: number
+  /**
+   * Newest prompts every project keeps before the rest of `budgetChars` is
+   * spent newest-first across projects. @default 3
+   */
+  guaranteedPrompts?: number
   /** Longer prompts are cut with an ellipsis. @default 300 */
   maxPromptChars?: number
   /** Shorter prompts are dropped as conversational noise. @default 40 */
@@ -25,7 +30,8 @@ export type ClaudeSessionsOptions = {
   home?: string
 }
 
-type Session = {
+/** One session file, reduced to the fields the digest is built from. */
+export type Session = {
   sessionId: string
   project: string
   branch?: string
@@ -49,8 +55,8 @@ type SessionRecord = {
 }
 
 /**
- * InterestSource that turns recent Claude Code sessions under `dir` into a
- * Markdown digest. Jev cannot summarize, so all compression is done here.
+ * InterestSource that turns recent Claude Code sessions under `dir` into
+ * `RecentWork`. Jev cannot summarize, so all compression is done here.
  * Rejects when no session has activity inside the window.
  */
 export function createClaudeSessionsInterestSource(opts: ClaudeSessionsOptions = {}): InterestSource {
@@ -58,19 +64,20 @@ export function createClaudeSessionsInterestSource(opts: ClaudeSessionsOptions =
   const days = opts.days ?? 7
   const now = opts.now ?? Date.now
   const budgetChars = opts.budgetChars ?? 6000
+  const guaranteedPrompts = opts.guaranteedPrompts ?? 3
   const maxPromptChars = opts.maxPromptChars ?? 300
   const minPromptChars = opts.minPromptChars ?? 40
   const home = opts.home ?? homedir()
 
   return {
     name: `claude-sessions:${days}d`,
-    async load(): Promise<string> {
+    async load(): Promise<RecentWork> {
       const since = now() - days * 86_400_000
       const sessions = await collectSessions(dir, since, home)
       if (sessions.length === 0) {
         throw new Error(`no Claude Code sessions in the last ${days} days under ${dir}`)
       }
-      return render(sessions, { days, budgetChars, maxPromptChars, minPromptChars })
+      return select(sessions, { days, budgetChars, guaranteedPrompts, maxPromptChars, minPromptChars })
     },
   }
 }
@@ -188,12 +195,10 @@ export function redact(text: string): string {
   return out
 }
 
-type RenderOptions = {
-  days: number
-  budgetChars: number
-  maxPromptChars: number
-  minPromptChars: number
-}
+/** The digest-shaping options, with defaults already applied. */
+export type SelectOptions = Required<
+  Pick<ClaudeSessionsOptions, 'days' | 'budgetChars' | 'guaranteedPrompts' | 'maxPromptChars' | 'minPromptChars'>
+>
 
 // Claude Code stores some of its own plumbing as `user` records with string
 // content, indistinguishable from typed prompts except by these markers.
@@ -207,60 +212,95 @@ export function isPlumbing(text: string): boolean {
   return PLUMBING.some((re) => re.test(text))
 }
 
-/** Pure. Renders the digest; prompt excerpts are chosen newest-first until `budgetChars` is spent. */
-export function render(sessions: Session[], o: RenderOptions): string {
-  const seen = new Set<string>()
-  const candidates: Array<{ at: number; session: Session; text: string }> = []
-  for (const s of sessions) {
-    for (const p of s.prompts) {
-      const t = normalize(p.text)
-      if (t.length < o.minPromptChars || t.startsWith('/') || isPlumbing(t)) continue
-      // Prefix match, not equality: the same request retyped with a different
-      // tail ("...please", "...again") should still count once.
-      const key = t.slice(0, 80)
-      if (seen.has(key)) continue
-      seen.add(key)
-      candidates.push({ at: p.at, session: s, text: truncate(redact(t), o.maxPromptChars) })
-    }
-  }
-  candidates.sort((a, b) => b.at - a.at)
+// Claude Code also attaches context to the person's own message inside the
+// same string: a worktree notice before the first prompt of a session, or the
+// file open in the IDE. Those blocks are closed tags, unlike the records above.
+const ATTACHED = [/<system-reminder>[\s\S]*?<\/system-reminder>/g, /<ide_[a-z_]+>[\s\S]*?<\/ide_[a-z_]+>/g]
 
-  const kept = new Map<Session, string[]>()
-  let used = 0
+/** The person's words with Claude Code's attached context blocks removed. */
+export function stripAttached(text: string): string {
+  let out = text
+  for (const re of ATTACHED) out = out.replace(re, '')
+  return out
+}
+
+type Candidate = { at: number; session: Session; text: string }
+
+/**
+ * Pure. Chooses what `RecentWork` carries. Guaranteed excerpts come first:
+ * for each project, the opening prompt of each of its sessions and its
+ * `guaranteedPrompts` newest excerpts, taken one per project in turn so a
+ * tight budget still leaves every project its first pick. The rest of
+ * `budgetChars` goes to the newest excerpts across all projects. Both passes
+ * stop at the first excerpt that does not fit; a shorter, older one is not
+ * picked in its place. Without the guarantees one busy day pushes every other
+ * project out, and a long session pushes out the prompt that says what it is
+ * for. A session's "opening" prompt is its oldest excerpt inside the window
+ * that survived the filters above, which for a session begun before the
+ * window is not its first message.
+ */
+export function select(sessions: Session[], o: SelectOptions): RecentWork {
+  const raw: Candidate[] = sessions.flatMap((s) =>
+    s.prompts.map((p) => ({ at: p.at, session: s, text: normalize(stripAttached(p.text)) })),
+  )
+  raw.sort((a, b) => b.at - a.at)
+
+  const seen = new Set<string>()
+  const candidates: Candidate[] = []
+  for (const c of raw) {
+    if (c.text.length < o.minPromptChars || c.text.startsWith('/') || isPlumbing(c.text)) continue
+    // Prefix match, not equality: the same request retyped with a different
+    // tail ("...please", "...again") should still count once.
+    const key = c.text.slice(0, 80)
+    if (seen.has(key)) continue
+    seen.add(key)
+    candidates.push({ ...c, text: truncate(redact(c.text), o.maxPromptChars) })
+  }
+
+  const sessionsOf = new Map<string, Session[]>()
+  for (const s of [...sessions].sort((a, b) => b.lastActivity - a.lastActivity)) {
+    sessionsOf.set(s.project, [...(sessionsOf.get(s.project) ?? []), s])
+  }
+  const candidatesOf = new Map<string, Candidate[]>()
   for (const c of candidates) {
+    candidatesOf.set(c.session.project, [...(candidatesOf.get(c.session.project) ?? []), c])
+  }
+
+  const opening = new Map<Session, Candidate>()
+  for (const c of [...candidates].reverse()) if (!opening.has(c.session)) opening.set(c.session, c)
+
+  const guaranteedOf = new Map<string, Candidate[]>()
+  for (const [project, list] of candidatesOf) {
+    const openings = sessionsOf.get(project)!.map((s) => opening.get(s)).filter((c): c is Candidate => c !== undefined)
+    guaranteedOf.set(project, [...new Set([...openings, ...list.slice(0, o.guaranteedPrompts)])])
+  }
+  const guaranteed: Candidate[] = []
+  const lists = [...guaranteedOf.values()]
+  for (let turn = 0; lists.some((list) => turn < list.length); turn++) {
+    for (const list of lists) if (list[turn]) guaranteed.push(list[turn]!)
+  }
+  const taken = new Set(guaranteed)
+  const order = guaranteed.concat(candidates.filter((c) => !taken.has(c)))
+
+  const kept = new Set<Candidate>()
+  let used = 0
+  for (const c of order) {
     if (used + c.text.length > o.budgetChars) break
     used += c.text.length
-    const list = kept.get(c.session) ?? []
-    list.push(c.text)
-    kept.set(c.session, list)
+    kept.add(c)
   }
 
-  const byProject = new Map<string, Session[]>()
-  for (const s of [...sessions].sort((a, b) => b.lastActivity - a.lastActivity)) {
-    const list = byProject.get(s.project) ?? []
-    list.push(s)
-    byProject.set(s.project, list)
+  const projects: RecentProject[] = []
+  for (const [name, list] of sessionsOf) {
+    projects.push({
+      name,
+      branches: [...new Set(list.map((s) => s.branch).filter((b): b is string => Boolean(b)))],
+      sessions: list.length,
+      titles: [...new Set(list.map((s) => s.title).filter((t): t is string => Boolean(t)))].map(redact),
+      prompts: (candidatesOf.get(name) ?? []).filter((c) => kept.has(c)).map((c) => c.text),
+    })
   }
-
-  const lines: string[] = [
-    `# What I have been working on (Claude Code sessions, last ${o.days} days)`,
-    '',
-    'Projects are listed most-recent first. Under each: session titles, then',
-    'excerpts of my own prompts (newest first).',
-  ]
-  for (const [project, list] of byProject) {
-    const branches = [...new Set(list.map((s) => s.branch).filter(Boolean))]
-    const head = branches.length ? `${project} (branches: ${branches.join(', ')})` : project
-    lines.push('', `## ${head} — ${list.length} session${list.length === 1 ? '' : 's'}`)
-    const titles = [...new Set(list.map((s) => s.title).filter((t): t is string => Boolean(t)))]
-    for (const t of titles) lines.push(`- ${redact(t)}`)
-    const prompts = list.flatMap((s) => kept.get(s) ?? [])
-    if (prompts.length) {
-      lines.push('', 'Prompts:')
-      for (const p of prompts) lines.push(`- "${p}"`)
-    }
-  }
-  return lines.join('\n') + '\n'
+  return { days: o.days, projects }
 }
 
 function normalize(text: string): string {
