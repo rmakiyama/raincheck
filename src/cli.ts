@@ -27,8 +27,7 @@ usage: raincheck [options]        judge bookmarks against recent Claude Code ses
 
   --days N          look back N days of Claude Code sessions (default: ${DEFAULTS.days})
   --limit N         fetch and judge at most N bookmarks (default: all)
-  --top N           print at most N surfaced bookmarks (default: all surfaced)
-  --threshold X     surface when relevant >= X (default: ${DEFAULTS.threshold})
+  --top N           print at most N bookmarks per section (default: all)
   --jsonl           write every verdict (surfaced or not) as JSONL to stdout
   --collection=ID   Raindrop collection: 0 = all, -1 = Unsorted (default: ${DEFAULTS.collection}).
                     Negative ids need the = form: --collection=-1
@@ -51,7 +50,6 @@ async function main(): Promise<number> {
       days: { type: 'string' },
       limit: { type: 'string' },
       top: { type: 'string' },
-      threshold: { type: 'string' },
       jsonl: { type: 'boolean', default: false },
       collection: { type: 'string' },
       concurrency: { type: 'string' },
@@ -103,7 +101,6 @@ async function main(): Promise<number> {
     interests,
     jev: createJevClient({ apiKey, model: JEV_MODEL }),
     sink,
-    thresholds: { relevant: options.threshold },
     limit: options.limit,
     concurrency: options.concurrency,
     onError: (bookmark, err) => {
@@ -115,7 +112,7 @@ async function main(): Promise<number> {
   const consulted = count('consulted')
   const models = [...new Set(result.verdicts.map((v) => v.model).filter(Boolean))].join(',') || '-'
   process.stderr.write(
-    `judged ${result.verdicts.length - consulted}, surfaced ${count('surface')}, consulted ${consulted}, ` +
+    `judged ${result.verdicts.length - consulted}, helps ${count('helps')}, related ${count('related')}, consulted ${consulted}, ` +
       `failed ${result.failed}, model=${models}, tokens in=${result.usage.input_tokens} out=${result.usage.output_tokens}\n`,
   )
   if (result.sourceError !== undefined) {

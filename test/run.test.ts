@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildQuestions } from '../src/questions.ts'
+import { QUESTIONS } from '../src/questions.ts'
 import { run } from '../src/run.ts'
 import { createJsonlSink } from '../src/sinks/jsonl.ts'
 import { createStdoutSink } from '../src/sinks/stdout.ts'
@@ -27,7 +27,7 @@ const recentWork: RecentWork = {
 }
 const interests = { name: 'stub', load: async () => recentWork }
 
-// Answers relevant = 1 / (n+1) so ids map to distinct probabilities.
+// Answers distance = 2 - 0.8n, effect = 1: n=0 → helps (2.0), n=1 → related (1.2), n=2 → skip (0.4).
 const jevByTitle = (fail: number[] = []): JevAsker & { states: unknown[]; inFlight: number; peak: number } => {
   const asker = {
     states: [] as unknown[],
@@ -38,11 +38,12 @@ const jevByTitle = (fail: number[] = []): JevAsker & { states: unknown[]; inFlig
       asker.peak = Math.max(asker.peak, asker.inFlight)
       await new Promise((r) => setTimeout(r, 1))
       asker.inFlight--
-      expect(questions).toEqual(buildQuestions(recentWork))
+      expect(questions).toBe(QUESTIONS)
       asker.states.push(state)
       const n = Number(/Article (\d+)/.exec((state as { article: { title: string } }).article.title)![1])
       if (fail.includes(n)) throw new Error(`boom ${n}`)
-      const answers: JevAnswers = { ...(fixture.answers as JevAnswers), relevant: { type: 'noul', noul: 1 / (n + 1) } }
+      const scored = (s: number) => ({ type: 'score' as const, score: s, confidence: 1, legend: {}, probabilities: {} })
+      const answers: JevAnswers = { ...(fixture.answers as JevAnswers), distance: scored(2 - 0.8 * n), effect: scored(1) }
       return { model: 'jev-1.13.0', answers, usage: { input_tokens: 100, output_tokens: 10 } }
     },
   }
@@ -67,11 +68,10 @@ describe('run', () => {
       bookmarks: source([bookmark(2), bookmark(0), bookmark(1)]),
       interests,
       jev,
-      sink,
-      thresholds: { relevant: 0.4 },
+      sink
     })
     expect(sink.got.map((v) => v.bookmark.id)).toEqual(['raindrop:0', 'raindrop:1', 'raindrop:2'])
-    expect(sink.got.map((v) => v.decision)).toEqual(['surface', 'surface', 'skip'])
+    expect(sink.got.map((v) => v.decision)).toEqual(['helps', 'related', 'skip'])
     expect(sink.got.map((v) => v.model)).toEqual(['jev-1.13.0', 'jev-1.13.0', 'jev-1.13.0'])
     expect(result.usage).toEqual({ input_tokens: 300, output_tokens: 30 })
     expect(result.failed).toBe(0)
@@ -86,12 +86,11 @@ describe('run', () => {
       bookmarks: source([bookmark(0), seen]),
       interests: { name: 'stub', load: async () => work },
       jev,
-      sink,
-      thresholds: { relevant: 0.5 },
+      sink
     })
     expect(jev.states).toHaveLength(1)
     expect(sink.got.map((v) => [v.bookmark.id, v.decision])).toEqual([
-      ['raindrop:0', 'surface'],
+      ['raindrop:0', 'helps'],
       ['raindrop:1', 'consulted'],
     ])
     expect(sink.got[1]).toEqual({ bookmark: seen, answers: {}, decision: 'consulted' })
@@ -103,8 +102,7 @@ describe('run', () => {
       bookmarks: source([{ ...bookmark(0), note: 'n', tags: ['t'], highlights: ['h'] }]),
       interests,
       jev,
-      sink: capture(),
-      thresholds: { relevant: 0.5 },
+      sink: capture()
     })
     expect(jev.states[0]).toEqual({
       recent_work: recentWork,
@@ -114,7 +112,7 @@ describe('run', () => {
 
   it('passes limit to the source', async () => {
     const jev = jevByTitle()
-    await run({ bookmarks: source([bookmark(0), bookmark(1), bookmark(2)]), interests, jev, sink: capture(), thresholds: { relevant: 0.5 }, limit: 2 })
+    await run({ bookmarks: source([bookmark(0), bookmark(1), bookmark(2)]), interests, jev, sink: capture(), limit: 2 })
     expect(jev.states).toHaveLength(2)
   })
 
@@ -126,7 +124,6 @@ describe('run', () => {
       interests,
       jev: jevByTitle([1]),
       sink,
-      thresholds: { relevant: 0.5 },
       onError: (it, err) => errors.push(`${it.id}:${(err as Error).message}`),
     })
     expect(result.failed).toBe(1)
@@ -144,14 +141,14 @@ describe('run', () => {
         throw new Error('Raindrop HTTP 500: page 1')
       },
     }
-    const result = await run({ bookmarks: failing, interests, jev: jevByTitle(), sink, thresholds: { relevant: 0.5 } })
+    const result = await run({ bookmarks: failing, interests, jev: jevByTitle(), sink })
     expect(sink.got.map((v) => v.bookmark.id)).toEqual(['raindrop:0', 'raindrop:1'])
     expect((result.sourceError as Error).message).toBe('Raindrop HTTP 500: page 1')
   })
 
   it('never spawns zero workers', async () => {
     const jev = jevByTitle()
-    await run({ bookmarks: source([bookmark(0)]), interests, jev, sink: capture(), thresholds: { relevant: 0.5 }, concurrency: 0 })
+    await run({ bookmarks: source([bookmark(0)]), interests, jev, sink: capture(), concurrency: 0 })
     expect(jev.states).toHaveLength(1)
   })
 
@@ -162,7 +159,6 @@ describe('run', () => {
       interests,
       jev,
       sink: capture(),
-      thresholds: { relevant: 0.5 },
       concurrency: 3,
     })
     expect(jev.peak).toBe(3)
@@ -184,7 +180,7 @@ describe('sinks', () => {
 
   it('jsonl writes one full verdict per line', async () => {
     const w = writer()
-    await createJsonlSink(w).emit([v(0, 'surface'), v(1, 'skip')])
+    await createJsonlSink(w).emit([v(0, 'helps'), v(1, 'skip')])
     const lines = w.text.trimEnd().split('\n')
     expect(lines).toHaveLength(2)
     expect(JSON.parse(lines[1]!)).toEqual(v(1, 'skip'))
@@ -192,7 +188,7 @@ describe('sinks', () => {
 
   it('stdout prints only surfaced bookmarks, capped by top', async () => {
     const w = writer()
-    await createStdoutSink(w, { top: 1 }).emit([v(0, 'surface'), v(1, 'surface'), v(2, 'skip')])
+    await createStdoutSink(w, { top: 1 }).emit([v(0, 'helps'), v(1, 'helps'), v(2, 'skip')])
     expect(w.text).toContain('1 of 3 worth cashing in today')
     expect(w.text).toContain('Article 0')
     expect(w.text).not.toContain('Article 1')

@@ -8,7 +8,7 @@
 import { loadCredentials, resolveSecret } from '../src/config.ts'
 import { createClaudeSessionsInterestSource } from '../src/interests/claude-sessions.ts'
 import { createJevClient } from '../src/jev/client.ts'
-import { JEV_MODEL, buildQuestions, buildState } from '../src/questions.ts'
+import { JEV_MODEL, QUESTIONS, buildState } from '../src/questions.ts'
 import { createRaindropSource } from '../src/raindrop/source.ts'
 
 const credentials = await loadCredentials({ warn: console.warn })
@@ -52,7 +52,7 @@ console.log(
   `sessions: ${recentWork.projects.length} projects, ${JSON.stringify(recentWork).length} chars as JSON (see \`raincheck context\`)`,
 )
 const jev = createJevClient({ apiKey, model: JEV_MODEL })
-const res = await jev.ask(buildState(recentWork, bookmark), buildQuestions(recentWork))
+const res = await jev.ask(buildState(recentWork, bookmark), QUESTIONS)
 console.log(`jev: model=${res.model} usage=${JSON.stringify(res.usage)}`)
 for (const [id, a] of Object.entries(res.answers)) {
   console.log(`jev: ${id} →`, JSON.stringify(a))

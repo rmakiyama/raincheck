@@ -6,7 +6,7 @@
 
 A CLI that picks, out of the bookmarks piling up in Raindrop, the ones worth reading now, judged against what you have been working on in Claude Code lately.
 
-The judging is done by [Jev](https://docs.typesafe.ai). For each article it returns probabilities for "is this related to my recent work" and "can I apply it right away", and the articles above the threshold are listed by relevance.
+The judging is done by [Jev](https://docs.typesafe.ai). For each article it rates how close its subject is to your recent work and how much reading it would change what you are doing; the two ratings decide whether the article helps with your work, is merely related to it, or is not shown.
 
 ## Install
 
@@ -60,11 +60,10 @@ The numbers under each article are Jev's answers. See [Questions](#questions) fo
 
 | flag | meaning |
 | --- | --- |
-| `--top N` | show at most N articles (default: every article above the threshold) |
-| `--threshold X` | show articles whose `relevant` is at least X, between 0 and 1 (default 0.6) |
+| `--top N` | show at most N articles per section (default: all) |
 | `--limit N` | fetch at most N articles from Raindrop, newest first (default: all) |
 | `--days N` | how many days of Claude Code sessions to look back (default 7) |
-| `--jsonl` | output as JSONL instead: every article, including those below the threshold, with all probabilities |
+| `--jsonl` | output as JSONL instead: every article, including those not shown, with all probabilities |
 | `--collection=ID` | which Raindrop collection to fetch. `0` = all, `-1` = Unsorted (default 0). Negative ids need the `=` form |
 | `--concurrency N` | how many Jev requests to run in parallel (default 10) |
 
@@ -104,23 +103,29 @@ A bookmark whose URL appears in one of your prompts is treated as already read: 
 
 ## Questions
 
-One request per bookmark, with four fixed questions plus one per project in the recent work. The questions are independent of each other; articles are never compared with one another.
+One request per bookmark, with three Score questions. The questions are independent of each other; articles are never compared with one another.
 
-| question | type | asks | used for |
+| question | levels (low → high) | used for |
+| --- | --- | --- |
+| `distance` | no contact / touches it / the subject itself (the article's main subject is what the person is working on) | **the decision** |
+| `effect` | not at all / a choice is informed / applied as is (how the current work would change after reading) | **the decision** |
+| `depth` | the title says it all / a short read / a sitting / hands-on (effort to get the value) | display only |
+
+`distance` and `effect` are each rounded to the nearest level and looked up in this table. There is no threshold.
+
+| distance \ effect | not at all | a choice is informed | applied as is |
 | --- | --- | --- | --- |
-| `relevant` | noul | does the article bear on the projects, technologies, or problems in the recent work | **the decision**: shown when at or above the threshold |
-| `actionable` | noul | does the article contain something that can be applied to the recent work right away | tiebreak in ordering |
-| `already_known` | noul | does the recent work show the article's substance already being practised | recorded only |
-| `depth` | score | how much focused effort the article demands, on 4 levels | recorded only |
-| `relevant_to::<project>` | noul | the `relevant` question, scoped to that one project | recorded only, to see whether `relevant` is diluted by the other projects |
-| `distance` | score | how close the article is to the current work: unrelated / adjacent / on the work | recorded only; candidate to replace `relevant` + threshold |
-| `effect` | score | how the current work would change after reading: not at all / informs a decision / applied right away | recorded only; same |
+| no contact | skip | skip | skip |
+| touches it | skip | related | related |
+| the subject itself | skip | helps | helps |
 
-Articles are ordered by `relevant` descending, then by `actionable` descending.
+Articles are ordered by `distance` descending, then by `effect` descending.
 
-The wording of the questions and the threshold live in [src/questions.ts](src/questions.ts). To change how articles are judged, edit that file and nothing else.
+The wording of the questions and the table live in [src/questions.ts](src/questions.ts). To change how articles are judged, edit that file and nothing else.
 
 ## Tuning
+
+Rather than deciding up front what you want to read, look at what came out and put into words why something is not needed. The reason becomes the wording of a level or a cell of the table.
 
 1. Save every verdict
 
@@ -128,14 +133,15 @@ The wording of the questions and the threshold live in [src/questions.ts](src/qu
    raincheck --jsonl > verdicts.jsonl
    ```
 
-2. Mark each line by hand: want to read, or not
-3. Compare `relevant` against your marks and pick the threshold
+2. For each shown article you do not need, write down why (the main subject is something else, already read, an overview piece)
+3. Fold the reason into a level's wording or the table in `src/questions.ts`
+4. Judge the same articles again and compare
 
    ```sh
-   jq -r '[(.answers.relevant.noul*100|round), .decision, .bookmark.title] | @tsv' verdicts.jsonl | sort -rn
+   jq -r '[(.answers.distance.score*10|round/10), (.answers.effect.score*10|round/10), .decision, .bookmark.title] | @tsv' verdicts.jsonl | sort -rn
    ```
 
-4. For a miss, decide whether the digest or the question wording is at fault. If the digest, read `raincheck context` and adjust `--days`. If the wording, edit `src/questions.ts`
+When the digest is at fault, read `raincheck context` and adjust `--days`.
 
 ## Development
 

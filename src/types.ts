@@ -130,8 +130,12 @@ export interface Sink {
  */
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>
 
-/** `consulted`: the person's own prompts already refer to the article, so it was not judged. */
-export type Decision = 'surface' | 'skip' | 'consulted'
+/**
+ * `helps` and `related` are the two sections shown; `skip` is not shown;
+ * `consulted`: the person's own prompts already refer to the article, so it
+ * was not judged.
+ */
+export type Decision = 'helps' | 'related' | 'skip' | 'consulted'
 
 export type Verdict = {
   bookmark: Bookmark
@@ -140,9 +144,4 @@ export type Verdict = {
   /** The model ID Jev reported, e.g. `jev-1.13.0`; versioned even when an alias was requested. Absent when not judged. */
   model?: string
   decision: Decision
-}
-
-export type Thresholds = {
-  /** Surface when `answers.relevant.noul >= relevant` (inclusive). */
-  relevant: number
 }

@@ -1,12 +1,11 @@
 import { consulted, decide, rank } from './decide.ts'
-import { buildQuestions, buildState } from './questions.ts'
+import { QUESTIONS, buildState } from './questions.ts'
 import type {
   InterestSource,
   Bookmark,
   BookmarkSource,
   JevAsker,
   Sink,
-  Thresholds,
   Verdict,
 } from './types.ts'
 
@@ -15,7 +14,6 @@ export type RunOptions = {
   interests: InterestSource
   jev: JevAsker
   sink: Sink
-  thresholds: Thresholds
   /** Passed through to `bookmarks.fetch`. */
   limit?: number
   /** Parallel Jev calls. Values below 1 are treated as 1. @default 10 */
@@ -44,7 +42,6 @@ export type RunResult = {
  */
 export async function run(opts: RunOptions): Promise<RunResult> {
   const interests = await opts.interests.load()
-  const questions = buildQuestions(interests)
   const concurrency = Math.max(1, Math.floor(opts.concurrency ?? 10) || 1)
 
   const verdicts: Verdict[] = []
@@ -57,10 +54,10 @@ export async function run(opts: RunOptions): Promise<RunResult> {
       return
     }
     try {
-      const res = await opts.jev.ask(buildState(interests, bookmark), questions)
+      const res = await opts.jev.ask(buildState(interests, bookmark), QUESTIONS)
       usage.input_tokens += res.usage?.input_tokens ?? 0
       usage.output_tokens += res.usage?.output_tokens ?? 0
-      verdicts.push(decide(bookmark, res, opts.thresholds))
+      verdicts.push(decide(bookmark, res))
     } catch (err) {
       failed++
       opts.onError?.(bookmark, err)

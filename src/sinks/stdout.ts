@@ -8,7 +8,7 @@ import type { Writer } from './jsonl.ts'
 export function createStdoutSink(out: Writer, opts: { top?: number } = {}): Sink {
   return {
     async emit(verdicts: Verdict[]): Promise<void> {
-      const surfaced = verdicts.filter((v) => v.decision === 'surface')
+      const surfaced = verdicts.filter((v) => v.decision === 'helps' || v.decision === 'related')
       const shown = opts.top === undefined ? surfaced : surfaced.slice(0, opts.top)
 
       if (shown.length === 0) {

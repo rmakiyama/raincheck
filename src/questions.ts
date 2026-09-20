@@ -1,4 +1,4 @@
-import type { Bookmark, JevQuestions, RecentWork, Thresholds } from './types.ts'
+import type { Bookmark, Decision, JevQuestions, RecentWork } from './types.ts'
 
 /**
  * A versioned ID, not `jev-latest`: `DEFAULT_THRESHOLDS` were tuned against
@@ -6,12 +6,6 @@ import type { Bookmark, JevQuestions, RecentWork, Thresholds } from './types.ts'
  * means recalibrating the thresholds at the same time.
  */
 export const JEV_MODEL = 'jev-1.13.0'
-
-export const DEFAULT_THRESHOLDS: Thresholds = {
-  // TODO: recalibrate once a week of labelled bookmarks exists; 0.6 rests on 18
-  // bookmarks saved on a single day.
-  relevant: 0.6,
-}
 
 /**
  * Question IDs are for code only — the model never sees them — so each
@@ -22,36 +16,6 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
  * (digest, article) may be in any language.
  */
 export const QUESTIONS = {
-  relevant: {
-    type: 'noul',
-    instructions:
-      'Does `article` bear on the projects, technologies, or problems described in `recent_work`?',
-    criteria: {
-      true: 'The article is about a technology, tool, design problem, or domain that appears in the recent work — the person would recognise it as "this is about what I am doing".',
-      false:
-        'The article is off-topic for everything in the recent work, or only shares a keyword without being about the same thing.',
-    },
-  },
-  actionable: {
-    type: 'noul',
-    instructions:
-      'Does `article` contain something the person could apply right away to a task described in `recent_work`?',
-    criteria: {
-      true: 'It gives a concrete technique, API, fix, configuration, or decision input that maps directly onto something the person is currently building or debugging.',
-      false:
-        'It is background, opinion, news, or general education — interesting perhaps, but nothing to apply to the current tasks.',
-    },
-  },
-  already_known: {
-    type: 'noul',
-    instructions:
-      'Does `recent_work` show the person already practising or reasoning through what `article` teaches?',
-    criteria: {
-      true: "The person's own prompts show them applying, configuring, or weighing exactly the thing the article is about; reading it would confirm what they already do rather than add to it.",
-      false:
-        "The prompts give no sign the person has engaged with the article's substance, or the article covers a side of it (internals, alternatives, pitfalls, a newer approach) that the prompts do not show them handling.",
-    },
-  },
   depth: {
     type: 'score',
     instructions: 'How much focused effort does `article` demand to get its value?',
@@ -62,10 +26,9 @@ export const QUESTIONS = {
       'Requires working through it hands-on (following code, running examples, or reproducing steps).',
     ],
   },
-  // `distance` and `effect` are recorded, not decided on: candidates to
-  // replace `relevant` + threshold with two Scores whose levels are the
-  // outcomes, combined in code. Kept alongside until labelled data says
-  // which decides better.
+  // `distance` and `effect` decide, through `OUTCOME`. Their levels are
+  // outcomes, not degrees, so there is no threshold to fit: what moves an
+  // article between sections is the wording of a level or a cell of the table.
   distance: {
     type: 'score',
     instructions:
@@ -88,24 +51,21 @@ export const QUESTIONS = {
   },
 } as const satisfies JevQuestions
 
+/** Short names for the levels of `depth`, in `criteria` order, for display. */
+export const DEPTH_LABELS = ['the title says it all', 'a short read', 'a sitting', 'hands-on'] as const
+
 /**
- * `QUESTIONS` plus one `relevant_to::<project name>` Noul per project in
- * `recentWork`: the `relevant` judgment scoped to that project alone.
- * Recorded, not decided on. They exist to measure whether `relevant`, which
- * sees every project at once, is diluted by the ones an article is not about;
- * the project name is in the id so a stored verdict stays readable on its own.
+ * What to do with an article, by the nearest level of `distance` (rows) and
+ * `effect` (columns), both in `criteria` order. An article that changes
+ * nothing is not worth reading however close; one that is merely adjacent
+ * goes to the second section, where a suggestion may still be a discovery.
  */
-export function buildQuestions(recentWork: RecentWork): JevQuestions {
-  const questions: JevQuestions = { ...QUESTIONS }
-  recentWork.projects.forEach((project, i) => {
-    questions[`relevant_to::${project.name}`] = {
-      type: 'noul',
-      instructions: `Does \`article\` bear on the project, technologies, or problems described in \`recent_work.projects[${i}]\`?`,
-      criteria: QUESTIONS.relevant.criteria,
-    }
-  })
-  return questions
-}
+export const OUTCOME = [
+  // effect:  nothing  informs    applies
+  ['skip', 'skip', 'skip'], // distance: no contact
+  ['skip', 'related', 'related'], // touches it
+  ['skip', 'helps', 'helps'], // the subject itself
+] as const satisfies readonly (readonly Decision[])[]
 
 /**
  * The state for one article. Kept minimal because unrelated fields lower

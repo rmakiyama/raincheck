@@ -1,7 +1,6 @@
 import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { DEFAULT_THRESHOLDS } from './questions.ts'
 
 /** `$XDG_CONFIG_HOME/raincheck`, falling back to `~/.config/raincheck`. */
 export function configDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -38,7 +37,6 @@ export const OPTIONS = {
   days: integer(1),
   limit: integer(0),
   top: integer(0),
-  threshold: { accepts: (n) => n >= 0 && n <= 1, expected: 'a number between 0 and 1' },
   collection: integer(-Infinity),
   concurrency: integer(1),
 } satisfies Record<string, Rule>
@@ -51,7 +49,6 @@ export type Config = Partial<Record<OptionName, number>>
 /** Built-in defaults. `limit` and `top` have none: unset means no cap. */
 export const DEFAULTS = {
   days: 7,
-  threshold: DEFAULT_THRESHOLDS.relevant,
   collection: 0,
   concurrency: 10,
 }
@@ -61,7 +58,6 @@ export type Options = {
   days: number
   limit?: number
   top?: number
-  threshold: number
   collection: number
   concurrency: number
 }
@@ -86,7 +82,6 @@ export function resolveOptions(flags: Partial<Record<OptionName, string>>, confi
     days: flag('days') ?? config.days ?? DEFAULTS.days,
     limit: flag('limit') ?? config.limit,
     top: flag('top') ?? config.top,
-    threshold: flag('threshold') ?? config.threshold ?? DEFAULTS.threshold,
     collection: flag('collection') ?? config.collection ?? DEFAULTS.collection,
     concurrency: flag('concurrency') ?? config.concurrency ?? DEFAULTS.concurrency,
   }

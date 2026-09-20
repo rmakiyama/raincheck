@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { consulted, decide, rank } from '../src/decide.ts'
-import type { Bookmark, JevAnswers, RecentWork, Verdict } from '../src/types.ts'
+import { consulted, decide, level, rank } from '../src/decide.ts'
+import type { Bookmark, JevAnswer, JevAnswers, RecentWork, Verdict } from '../src/types.ts'
 
 const bookmark: Bookmark = {
   id: 'raindrop:1',
@@ -10,88 +10,68 @@ const bookmark: Bookmark = {
   savedAt: '2026-09-10T00:00:00.000Z',
 }
 
-const answers = (relevant: number, extra: JevAnswers = {}): JevAnswers => ({
-  relevant: { type: 'noul', noul: relevant },
-  ...extra,
+const score = (s: number, top = 2): JevAnswer => ({
+  type: 'score',
+  score: s,
+  confidence: 1,
+  legend: {},
+  probabilities: {},
 })
-
+const answers = (distance: number, effect: number): JevAnswers => ({ distance: score(distance), effect: score(effect) })
 const res = (answers: JevAnswers) => ({ model: 'jev-1.13.0', answers })
 
 describe('decide', () => {
-  it('surfaces when relevant is exactly at the threshold', () => {
-    expect(decide(bookmark, res(answers(0.5)), { relevant: 0.5 }).decision).toBe('surface')
+  it('reads the outcome table by the nearest level of distance and effect', () => {
+    expect(decide(bookmark, res(answers(2.0, 1.0))).decision).toBe('helps')
+    expect(decide(bookmark, res(answers(1.6, 0.9))).decision).toBe('helps')
+    expect(decide(bookmark, res(answers(1.4, 1.0))).decision).toBe('related')
+    expect(decide(bookmark, res(answers(1.0, 2.0))).decision).toBe('related')
+    expect(decide(bookmark, res(answers(2.0, 0.4))).decision).toBe('skip')
+    expect(decide(bookmark, res(answers(0.4, 2.0))).decision).toBe('skip')
   })
 
-  it('skips just below the threshold', () => {
-    expect(decide(bookmark, res(answers(0.4999)), { relevant: 0.5 }).decision).toBe('skip')
+  it('rounds halves up, as the cookbook does', () => {
+    expect(decide(bookmark, res(answers(1.5, 0.5))).decision).toBe('helps')
   })
 
-  it('treats 0.5 as "no idea", so a strict threshold skips it', () => {
-    expect(decide(bookmark, res(answers(0.5)), { relevant: 0.7 }).decision).toBe('skip')
-  })
-
-  it('ignores the other questions for the decision', () => {
-    const v = decide(
-      bookmark,
-      res(
-        answers(0.9, {
-          some_future_question: { type: 'noul', noul: 0.99 },
-          actionable: { type: 'noul', noul: 0.01 },
-          depth: {
-            type: 'score',
-            score: 0.1,
-            confidence: 0.1,
-            legend: {},
-            probabilities: { '0': 0.5, '1': 0.5 },
-          },
-        }),
-      ),
-      { relevant: 0.5 },
-    )
-    expect(v.decision).toBe('surface')
-  })
-
-  it('skips when relevant is missing', () => {
-    expect(decide(bookmark, res({}), { relevant: 0.0 }).decision).toBe('skip')
-  })
-
-  it('skips when relevant has the wrong type', () => {
-    const wrong: JevAnswers = {
-      relevant: { type: 'choice', choice: 'yes', confidence: 1, probabilities: { yes: 1 } },
-    }
-    expect(decide(bookmark, res(wrong), { relevant: 0.0 }).decision).toBe('skip')
+  it('skips when a deciding answer is missing or not a score', () => {
+    expect(decide(bookmark, res({ distance: score(2) })).decision).toBe('skip')
+    expect(decide(bookmark, res({ ...answers(2, 2), effect: { type: 'noul', noul: 1 } })).decision).toBe('skip')
   })
 
   it('keeps every answer on the verdict untouched and records the model', () => {
-    const a = answers(0.8, { some_future_question: { type: 'noul', noul: 0.3 } })
-    const v = decide(bookmark, { model: 'jev-9.9.9', answers: a }, { relevant: 0.5 })
+    const a = { ...answers(2, 1), some_future_question: { type: 'noul', noul: 0.3 } as JevAnswer }
+    const v = decide(bookmark, { model: 'jev-9.9.9', answers: a })
     expect(v.answers).toBe(a)
     expect(v.model).toBe('jev-9.9.9')
   })
 })
 
+describe('level', () => {
+  it('never exceeds the top level even if the score does', () => {
+    expect(level({ depth: score(3.4) }, 'depth')).toBe(3)
+    expect(level({ depth: score(0.49) }, 'depth')).toBe(0)
+  })
+})
+
 describe('rank', () => {
-  const v = (id: string, relevant: number, actionable?: number): Verdict => ({
+  const v = (id: string, distance: number, effect: number): Verdict => ({
     bookmark: { ...bookmark, id },
-    answers: answers(relevant, actionable === undefined ? {} : { actionable: { type: 'noul', noul: actionable } }),
+    answers: answers(distance, effect),
     model: 'jev-1.13.0',
-    decision: 'surface',
+    decision: 'helps',
   })
 
-  it('orders by relevant descending', () => {
-    const out = rank([v('a', 0.3), v('b', 0.9), v('c', 0.6)])
-    expect(out.map((x) => x.bookmark.id)).toEqual(['b', 'c', 'a'])
+  it('orders by distance descending, then effect descending', () => {
+    const out = rank([v('a', 1.2, 2), v('b', 1.9, 0.5), v('c', 1.9, 1.5), v('d', 0.3, 0)])
+    expect(out.map((x) => x.bookmark.id)).toEqual(['c', 'b', 'a', 'd'])
   })
 
-  it('breaks ties by actionable', () => {
-    const out = rank([v('a', 0.8, 0.2), v('b', 0.8, 0.7), v('c', 0.8)])
-    expect(out.map((x) => x.bookmark.id)).toEqual(['b', 'a', 'c'])
-  })
-
-  it('does not mutate the input', () => {
-    const input = [v('a', 0.3), v('b', 0.9)]
-    rank(input)
-    expect(input.map((x) => x.bookmark.id)).toEqual(['a', 'b'])
+  it('puts a verdict without answers last and does not mutate the input', () => {
+    const consultedVerdict: Verdict = { bookmark: { ...bookmark, id: 'x' }, answers: {}, decision: 'consulted' }
+    const input = [consultedVerdict, v('a', 0.3, 0)]
+    expect(rank(input).map((x) => x.bookmark.id)).toEqual(['a', 'x'])
+    expect(input[0]!.bookmark.id).toBe('x')
   })
 })
 
