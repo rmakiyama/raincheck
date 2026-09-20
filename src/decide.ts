@@ -1,5 +1,12 @@
-import { OUTCOME, QUESTIONS } from './questions.ts'
-import type { Decision, Bookmark, JevAnswers, JevResponse, RecentWork, Verdict } from './types.ts'
+import { OUTCOME, QUESTIONS } from "./questions.ts";
+import type {
+  Bookmark,
+  Decision,
+  JevAnswers,
+  JevResponse,
+  RecentWork,
+  Verdict,
+} from "./types.ts";
 
 /**
  * Pure. True when a prompt in `recentWork` contains the bookmark's URL: the
@@ -9,43 +16,54 @@ import type { Decision, Bookmark, JevAnswers, JevResponse, RecentWork, Verdict }
  * not a match.
  */
 export function consulted(recentWork: RecentWork, bookmark: Bookmark): boolean {
-  const target = bareUrl(bookmark.url)
-  return recentWork.projects.some((p) => p.prompts.some((text) => urlsIn(text).some((u) => bareUrl(u) === target)))
+  const target = bareUrl(bookmark.url);
+  return recentWork.projects.some((p) =>
+    p.prompts.some((text) => urlsIn(text).some((u) => bareUrl(u) === target)),
+  );
 }
 
 // Stops at whitespace, brackets, quotes, and Japanese punctuation, then drops
 // the sentence punctuation a URL is often pasted right in front of.
-const URL_TOKEN = /https?:\/\/[^\s<>"'()\[\]{}。、（）「」]+/g
+const URL_TOKEN = /https?:\/\/[^\s<>"'()[\]{}。、（）「」]+/g;
 
 function urlsIn(text: string): string[] {
-  return (text.match(URL_TOKEN) ?? []).map((u) => u.replace(/[.,;:!?]+$/, ''))
+  return (text.match(URL_TOKEN) ?? []).map((u) => u.replace(/[.,;:!?]+$/, ""));
 }
 
 function bareUrl(url: string): string {
   return url
     .toLowerCase()
-    .replace(/^https?:\/\/(www\.)?/, '')
-    .replace(/#.*$/, '')
-    .replace(/\/$/, '')
+    .replace(/^https?:\/\/(www\.)?/, "")
+    .replace(/#.*$/, "")
+    .replace(/\/$/, "");
 }
 
 /** Pure. `res.answers` is stored on the verdict as-is, not copied. */
-export function decide(bookmark: Bookmark, res: Pick<JevResponse, 'model' | 'answers'>): Verdict {
-  const levels: Record<string, number> = {}
+export function decide(
+  bookmark: Bookmark,
+  res: Pick<JevResponse, "model" | "answers">,
+): Verdict {
+  const levels: Record<string, number> = {};
   for (const id of Object.keys(QUESTIONS) as (keyof typeof QUESTIONS)[]) {
-    const l = level(res.answers, id)
-    if (l !== undefined) levels[id] = l
+    const l = level(res.answers, id);
+    if (l !== undefined) levels[id] = l;
   }
-  return { bookmark, answers: res.answers, model: res.model, levels, decision: decision(levels) }
+  return {
+    bookmark,
+    answers: res.answers,
+    model: res.model,
+    levels,
+    decision: decision(levels),
+  };
 }
 
 function decision(levels: Record<string, number>): Decision {
-  const distance = levels.distance
-  const effect = levels.effect
+  const distance = levels.distance;
+  const effect = levels.effect;
   // Skip rather than throw: the verdict still reaches the sink with its
   // answers attached, which is what makes the bad answer diagnosable.
-  if (distance === undefined || effect === undefined) return 'skip'
-  return OUTCOME[distance]![effect]!
+  if (distance === undefined || effect === undefined) return "skip";
+  return OUTCOME[distance]![effect]!;
 }
 
 /**
@@ -55,16 +73,19 @@ function decision(levels: Record<string, number>): Decision {
  * others. `undefined` when the answer is missing, not a Score, or lacks a
  * probability for some level.
  */
-function level(answers: JevAnswers, id: keyof typeof QUESTIONS): number | undefined {
-  const a = answers[id]
-  if (a?.type !== 'score') return undefined
-  let best: number | undefined
+function level(
+  answers: JevAnswers,
+  id: keyof typeof QUESTIONS,
+): number | undefined {
+  const a = answers[id];
+  if (a?.type !== "score") return undefined;
+  let best: number | undefined;
   for (let i = 0; i < QUESTIONS[id].criteria.length; i++) {
-    const p = a.probabilities[String(i)]
-    if (p === undefined) return undefined
-    if (best === undefined || p > a.probabilities[String(best)]!) best = i
+    const p = a.probabilities[String(i)];
+    if (p === undefined) return undefined;
+    if (best === undefined || p > a.probabilities[String(best)]!) best = i;
   }
-  return best
+  return best;
 }
 
 /**
@@ -76,18 +97,19 @@ export function rank(verdicts: Verdict[]): Verdict[] {
   const keys = (v: Verdict) => [
     v.levels?.distance ?? -1,
     v.levels?.effect ?? -1,
-    mean(v, 'distance'),
-    mean(v, 'effect'),
-  ]
+    mean(v, "distance"),
+    mean(v, "effect"),
+  ];
   return [...verdicts].sort((a, b) => {
-    const ka = keys(a)
-    const kb = keys(b)
-    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return kb[i]! - ka[i]!
-    return 0
-  })
+    const ka = keys(a);
+    const kb = keys(b);
+    for (let i = 0; i < ka.length; i++)
+      if (ka[i] !== kb[i]) return kb[i]! - ka[i]!;
+    return 0;
+  });
 }
 
 function mean(v: Verdict, id: string): number {
-  const a = v.answers[id]
-  return a?.type === 'score' ? a.score : -1
+  const a = v.answers[id];
+  return a?.type === "score" ? a.score : -1;
 }

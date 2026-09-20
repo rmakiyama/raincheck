@@ -33,7 +33,7 @@
         "2": "A long or technical piece worth a dedicated sitting.",
         "3": "Requires working through it hands-on (following code, running examples, or reproducing steps)."
       },
-      "probabilities": { "0": 0.02, "1": 0.16, "2": 0.52, "3": 0.30 }
+      "probabilities": { "0": 0.02, "1": 0.16, "2": 0.52, "3": 0.3 }
     }
   },
   "usage": { "input_tokens": 6657, "output_tokens": 142 }
