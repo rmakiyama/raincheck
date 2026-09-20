@@ -1,5 +1,5 @@
 import { decide, rank } from './decide.ts'
-import { QUESTIONS, buildState } from './questions.ts'
+import { buildQuestions, buildState } from './questions.ts'
 import type {
   InterestSource,
   Bookmark,
@@ -44,6 +44,7 @@ export type RunResult = {
  */
 export async function run(opts: RunOptions): Promise<RunResult> {
   const interests = await opts.interests.load()
+  const questions = buildQuestions(interests)
   const concurrency = Math.max(1, Math.floor(opts.concurrency ?? 10) || 1)
 
   const verdicts: Verdict[] = []
@@ -52,7 +53,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
 
   const judge = async (bookmark: Bookmark) => {
     try {
-      const res = await opts.jev.ask(buildState(interests, bookmark), QUESTIONS)
+      const res = await opts.jev.ask(buildState(interests, bookmark), questions)
       usage.input_tokens += res.usage?.input_tokens ?? 0
       usage.output_tokens += res.usage?.output_tokens ?? 0
       verdicts.push(decide(bookmark, res, opts.thresholds))

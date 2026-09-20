@@ -65,6 +65,25 @@ export const QUESTIONS = {
 } as const satisfies JevQuestions
 
 /**
+ * `QUESTIONS` plus one `relevant_to::<project name>` Noul per project in
+ * `recentWork`: the `relevant` judgment scoped to that project alone.
+ * Recorded, not decided on. They exist to measure whether `relevant`, which
+ * sees every project at once, is diluted by the ones an article is not about;
+ * the project name is in the id so a stored verdict stays readable on its own.
+ */
+export function buildQuestions(recentWork: RecentWork): JevQuestions {
+  const questions: JevQuestions = { ...QUESTIONS }
+  recentWork.projects.forEach((project, i) => {
+    questions[`relevant_to::${project.name}`] = {
+      type: 'noul',
+      instructions: `Does \`article\` bear on the project, technologies, or problems described in \`recent_work.projects[${i}]\`?`,
+      criteria: QUESTIONS.relevant.criteria,
+    }
+  })
+  return questions
+}
+
+/**
  * The state for one article. Kept minimal because unrelated fields lower
  * accuracy: `savedAt` is out (Jev cannot do date math) and `url` is out
  * (`domain` carries the same signal in fewer tokens).

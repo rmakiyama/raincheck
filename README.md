@@ -102,7 +102,7 @@ The bookmark's title, description, your note, your highlights, tags, and domain.
 
 ## Questions
 
-One request per bookmark, with four questions. The questions are independent of each other; articles are never compared with one another.
+One request per bookmark, with four fixed questions plus one per project in the recent work. The questions are independent of each other; articles are never compared with one another.
 
 | question | type | asks | used for |
 | --- | --- | --- | --- |
@@ -110,6 +110,7 @@ One request per bookmark, with four questions. The questions are independent of 
 | `actionable` | noul | does the article contain something that can be applied to the recent work right away | tiebreak in ordering |
 | `already_known` | noul | does the recent work show the article's substance already being practised | recorded only |
 | `depth` | score | how much focused effort the article demands, on 4 levels | recorded only |
+| `relevant_to::<project>` | noul | the `relevant` question, scoped to that one project | recorded only, to see whether `relevant` is diluted by the other projects |
 
 Articles are ordered by `relevant` descending, then by `actionable` descending.
 

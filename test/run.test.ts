@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { QUESTIONS } from '../src/questions.ts'
+import { buildQuestions } from '../src/questions.ts'
 import { run } from '../src/run.ts'
 import { createJsonlSink } from '../src/sinks/jsonl.ts'
 import { createStdoutSink } from '../src/sinks/stdout.ts'
@@ -38,7 +38,7 @@ const jevByTitle = (fail: number[] = []): JevAsker & { states: unknown[]; inFlig
       asker.peak = Math.max(asker.peak, asker.inFlight)
       await new Promise((r) => setTimeout(r, 1))
       asker.inFlight--
-      expect(questions).toBe(QUESTIONS)
+      expect(questions).toEqual(buildQuestions(recentWork))
       asker.states.push(state)
       const n = Number(/Article (\d+)/.exec((state as { article: { title: string } }).article.title)![1])
       if (fail.includes(n)) throw new Error(`boom ${n}`)
