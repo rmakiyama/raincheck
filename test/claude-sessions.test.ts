@@ -129,6 +129,19 @@ describe('createClaudeSessionsInterestSource', () => {
     expect(out).not.toContain('lorem ipsum '.repeat(20))
   })
 
+  it('keeps the newest prompts of every project even when one busy project would fill the budget', async () => {
+    const busy = Array.from({ length: 20 }, (_, i) => user(`BUSY ${i} ${LONG}`, 1, { cwd: '/Users/me/dev/org/busy' }))
+    await session('p1', 'a', busy)
+    await session('p2', 'b', [
+      user(`QUIET 0 ${LONG}`, 4, { cwd: '/Users/me/dev/org/quiet' }),
+      user(`QUIET 1 ${LONG}`, 5, { cwd: '/Users/me/dev/org/quiet' }),
+    ])
+    const out = await load({ budgetChars: 600, maxPromptChars: 100, guaranteedPrompts: 2 })
+    expect(out).toContain('QUIET 0')
+    expect(out).toContain('QUIET 1')
+    expect(out.match(/BUSY/g)?.length).toBeGreaterThan(2)
+  })
+
   it('groups sessions by project with worktrees folded into their repo', async () => {
     await session('p1', 'a', [
       user(LONG + ' one', 1, { cwd: '/Users/me/dev/org/repo/.claude/worktrees/feat-x', gitBranch: 'feat-x' }),
@@ -169,15 +182,27 @@ describe('select', () => {
   // 50 chars each so budgets below count in whole prompts; words, not a run of
   // one letter, or `redact` would treat the padding as a token.
   const P = (tag: string) => `${tag} lorem ipsum dolor sit amet consectetur adipiscing elit`.slice(0, 50)
-  const opts = { days: 7, budgetChars: 500, maxPromptChars: 300, minPromptChars: 40 }
+  const opts = { days: 7, budgetChars: 500, guaranteedPrompts: 3, maxPromptChars: 300, minPromptChars: 40 }
 
-  it('spends the budget newest-first across projects, most recent project first', () => {
+  it('gives every project its newest prompts first, then spends the rest newest-first', () => {
+    const busy = session('busy', 1, Array.from({ length: 20 }, (_, i) => prompt(P(`busy${i}`), 1 + i / 100)))
+    const quiet = session('quiet', 3, [prompt(P('quiet0'), 3), prompt(P('quiet1'), 4), prompt(P('quiet2'), 5), prompt(P('quiet3'), 6)])
+    const older = session('older', 6, [prompt(P('older0'), 6)])
+    const d = select([older, quiet, busy], opts)
+
+    expect(d.projects.map((p) => p.name)).toEqual(['busy', 'quiet', 'older'])
+    // 500 chars = 10 prompts: 3 guaranteed to busy, 3 to quiet, 1 to older, 3 more to busy by recency.
+    expect(d.projects[0]!.prompts).toHaveLength(6)
+    expect(d.projects[0]!.prompts[0]).toContain('busy0')
+    expect(d.projects[1]!.prompts.map((t) => t.slice(0, 6))).toEqual(['quiet0', 'quiet1', 'quiet2'])
+    expect(d.projects[2]!.prompts).toHaveLength(1)
+  })
+
+  it('falls back to pure recency when the guarantee is zero', () => {
     const busy = session('busy', 1, Array.from({ length: 20 }, (_, i) => prompt(P(`busy${i}`), 1 + i / 100)))
     const quiet = session('quiet', 3, [prompt(P('quiet0'), 3)])
-    const d = select([quiet, busy], opts)
-    expect(d.projects.map((p) => p.name)).toEqual(['busy', 'quiet'])
+    const d = select([quiet, busy], { ...opts, guaranteedPrompts: 0 })
     expect(d.projects[0]!.prompts).toHaveLength(10)
-    expect(d.projects[0]!.prompts[0]).toContain('busy0')
     expect(d.projects[1]!.prompts).toHaveLength(0)
   })
 

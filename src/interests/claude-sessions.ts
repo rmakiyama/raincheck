@@ -17,6 +17,11 @@ export type ClaudeSessionsOptions = {
   now?: () => number
   /** Total characters of prompt excerpts; titles and headings are not counted. @default 6000 */
   budgetChars?: number
+  /**
+   * Newest prompts every project keeps before the rest of `budgetChars` is
+   * spent newest-first across projects. @default 3
+   */
+  guaranteedPrompts?: number
   /** Longer prompts are cut with an ellipsis. @default 300 */
   maxPromptChars?: number
   /** Shorter prompts are dropped as conversational noise. @default 40 */
@@ -59,6 +64,7 @@ export function createClaudeSessionsInterestSource(opts: ClaudeSessionsOptions =
   const days = opts.days ?? 7
   const now = opts.now ?? Date.now
   const budgetChars = opts.budgetChars ?? 6000
+  const guaranteedPrompts = opts.guaranteedPrompts ?? 3
   const maxPromptChars = opts.maxPromptChars ?? 300
   const minPromptChars = opts.minPromptChars ?? 40
   const home = opts.home ?? homedir()
@@ -71,7 +77,7 @@ export function createClaudeSessionsInterestSource(opts: ClaudeSessionsOptions =
       if (sessions.length === 0) {
         throw new Error(`no Claude Code sessions in the last ${days} days under ${dir}`)
       }
-      return render(select(sessions, { days, budgetChars, maxPromptChars, minPromptChars }))
+      return render(select(sessions, { days, budgetChars, guaranteedPrompts, maxPromptChars, minPromptChars }))
     },
   }
 }
@@ -191,7 +197,7 @@ export function redact(text: string): string {
 
 /** The digest-shaping options, with defaults already applied. */
 export type SelectOptions = Required<
-  Pick<ClaudeSessionsOptions, 'days' | 'budgetChars' | 'maxPromptChars' | 'minPromptChars'>
+  Pick<ClaudeSessionsOptions, 'days' | 'budgetChars' | 'guaranteedPrompts' | 'maxPromptChars' | 'minPromptChars'>
 >
 
 /** One project's share of the digest. */
@@ -226,9 +232,12 @@ export function isPlumbing(text: string): boolean {
 type Candidate = { at: number; project: string; text: string }
 
 /**
- * Pure. Chooses what the digest carries: excerpts newest-first across all
- * projects until `budgetChars` is spent. Stops at the first excerpt that does
- * not fit; a shorter, older one is not picked in its place.
+ * Pure. Chooses what the digest carries. Every project keeps its
+ * `guaranteedPrompts` newest excerpts first (projects in recency order), then
+ * the rest of `budgetChars` goes to the newest excerpts across all projects.
+ * Both passes stop at the first excerpt that does not fit; a shorter, older
+ * one is not picked in its place. Without the guarantee one busy day pushes
+ * every other project out.
  */
 export function select(sessions: Session[], o: SelectOptions): Digest {
   const raw: Candidate[] = sessions.flatMap((s) =>
@@ -257,9 +266,15 @@ export function select(sessions: Session[], o: SelectOptions): Digest {
     candidatesOf.set(c.project, [...(candidatesOf.get(c.project) ?? []), c])
   }
 
+  const guaranteed = new Set<Candidate>()
+  for (const project of sessionsOf.keys()) {
+    for (const c of (candidatesOf.get(project) ?? []).slice(0, o.guaranteedPrompts)) guaranteed.add(c)
+  }
+  const order = [...guaranteed, ...candidates.filter((c) => !guaranteed.has(c))]
+
   const kept = new Set<Candidate>()
   let used = 0
-  for (const c of candidates) {
+  for (const c of order) {
     if (used + c.text.length > o.budgetChars) break
     used += c.text.length
     kept.add(c)
