@@ -62,6 +62,28 @@ export const QUESTIONS = {
       'Requires working through it hands-on (following code, running examples, or reproducing steps).',
     ],
   },
+  // `distance` and `effect` are recorded, not decided on: candidates to
+  // replace `relevant` + threshold with two Scores whose levels are the
+  // outcomes, combined in code. Kept alongside until labelled data says
+  // which decides better.
+  distance: {
+    type: 'score',
+    instructions: 'How close is `article` to what the person is doing in `recent_work`?',
+    criteria: [
+      'Unrelated: nothing the person is working on involves what the article is about; at most they share a word.',
+      'Adjacent: the same field or the same kind of problem, but the article is about a different tool, approach, or layer than the one the person is using.',
+      'On the work: the article is about a technology, tool, or design problem the person is actively using or wrestling with; they would say "this is about what I am doing".',
+    ],
+  },
+  effect: {
+    type: 'score',
+    instructions: "After reading `article`, how would the person's current work in `recent_work` change?",
+    criteria: [
+      'Not at all: it confirms what the person already does, or it is general background, opinion, or news.',
+      'Informs a decision: it shows options, pitfalls, or another way of doing something the person is doing, without giving them something to apply right away.',
+      'Applied right away: it gives a concrete technique, API, configuration, or fix that maps directly onto something the person is currently building or debugging.',
+    ],
+  },
 } as const satisfies JevQuestions
 
 /**

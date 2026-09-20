@@ -111,6 +111,8 @@ One request per bookmark, with four fixed questions plus one per project in the 
 | `already_known` | noul | does the recent work show the article's substance already being practised | recorded only |
 | `depth` | score | how much focused effort the article demands, on 4 levels | recorded only |
 | `relevant_to::<project>` | noul | the `relevant` question, scoped to that one project | recorded only, to see whether `relevant` is diluted by the other projects |
+| `distance` | score | how close the article is to the current work: unrelated / adjacent / on the work | recorded only; candidate to replace `relevant` + threshold |
+| `effect` | score | how the current work would change after reading: not at all / informs a decision / applied right away | recorded only; same |
 
 Articles are ordered by `relevant` descending, then by `actionable` descending.
 
