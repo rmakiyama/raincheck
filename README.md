@@ -65,17 +65,28 @@ The line under each URL is how much effort the article takes to read. Which sect
 | `--top N` | show at most N articles per section (default: all) |
 | `--limit N` | fetch at most N articles from Raindrop, newest first (default: all) |
 | `--days N` | how many days of Claude Code sessions to look back (default 7) |
+| `--current` | use only the Claude Code session the command is run from, whole, instead of the last `--days`. See [From inside a session](#from-inside-a-session) |
 | `--jsonl` | output as JSONL instead: every article, including those not shown, with all probabilities |
 | `--collection=ID` | which Raindrop collection to fetch. `0` = all, `-1` = Unsorted (default 0). Negative ids need the `=` form |
 | `--concurrency N` | how many Jev requests to run in parallel (default 10) |
 
 ### Defaults
 
-Any flag except `--jsonl` can have its default set in `~/.config/raincheck/config.json`. A flag on the command line still wins.
+Any flag except `--current` and `--jsonl` can have its default set in `~/.config/raincheck/config.json`. A flag on the command line still wins.
 
 ```json
 { "days": 14, "top": 5 }
 ```
+
+### From inside a session
+
+When Claude runs raincheck inside its own session, `--current` judges against that one session alone:
+
+```sh
+raincheck --current --top 5
+```
+
+The session is found through `CLAUDE_CODE_SESSION_ID`, which Claude Code sets. From a plain terminal the flag fails.
 
 ## State
 
@@ -143,7 +154,7 @@ Rather than deciding up front what you want to read, look at what came out and p
    jq -r '[.levels.distance, .levels.effect, .decision, .bookmark.title] | @tsv' verdicts.jsonl | sort -rn
    ```
 
-When the digest is at fault, read `raincheck context` and adjust `--days`.
+When the digest is at fault, read `raincheck context` and adjust `--days`, or narrow it to the session at hand with `--current`.
 
 ## Development
 
