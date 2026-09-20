@@ -1,8 +1,12 @@
-import type { Decision, Bookmark, JevAnswers, Thresholds, Verdict } from './types.ts'
+import type { Decision, Bookmark, JevAnswers, JevResponse, Thresholds, Verdict } from './types.ts'
 
-/** Pure. `answers` is stored on the verdict as-is, not copied. */
-export function decide(bookmark: Bookmark, answers: JevAnswers, thresholds: Thresholds): Verdict {
-  return { bookmark, answers, decision: decision(answers, thresholds) }
+/** Pure. `res.answers` is stored on the verdict as-is, not copied. */
+export function decide(
+  bookmark: Bookmark,
+  res: Pick<JevResponse, 'model' | 'answers'>,
+  thresholds: Thresholds,
+): Verdict {
+  return { bookmark, answers: res.answers, model: res.model, decision: decision(res.answers, thresholds) }
 }
 
 function decision(answers: JevAnswers, thresholds: Thresholds): Decision {

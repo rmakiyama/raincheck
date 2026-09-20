@@ -15,52 +15,58 @@ const answers = (relevant: number, extra: JevAnswers = {}): JevAnswers => ({
   ...extra,
 })
 
+const res = (answers: JevAnswers) => ({ model: 'jev-1.13.0', answers })
+
 describe('decide', () => {
   it('surfaces when relevant is exactly at the threshold', () => {
-    expect(decide(bookmark, answers(0.5), { relevant: 0.5 }).decision).toBe('surface')
+    expect(decide(bookmark, res(answers(0.5)), { relevant: 0.5 }).decision).toBe('surface')
   })
 
   it('skips just below the threshold', () => {
-    expect(decide(bookmark, answers(0.4999), { relevant: 0.5 }).decision).toBe('skip')
+    expect(decide(bookmark, res(answers(0.4999)), { relevant: 0.5 }).decision).toBe('skip')
   })
 
   it('treats 0.5 as "no idea", so a strict threshold skips it', () => {
-    expect(decide(bookmark, answers(0.5), { relevant: 0.7 }).decision).toBe('skip')
+    expect(decide(bookmark, res(answers(0.5)), { relevant: 0.7 }).decision).toBe('skip')
   })
 
   it('ignores the other questions for the decision', () => {
     const v = decide(
       bookmark,
-      answers(0.9, {
-        some_future_question: { type: 'noul', noul: 0.99 },
-        actionable: { type: 'noul', noul: 0.01 },
-        depth: {
-          type: 'score',
-          score: 0.1,
-          confidence: 0.1,
-          legend: {},
-          probabilities: { '0': 0.5, '1': 0.5 },
-        },
-      }),
+      res(
+        answers(0.9, {
+          some_future_question: { type: 'noul', noul: 0.99 },
+          actionable: { type: 'noul', noul: 0.01 },
+          depth: {
+            type: 'score',
+            score: 0.1,
+            confidence: 0.1,
+            legend: {},
+            probabilities: { '0': 0.5, '1': 0.5 },
+          },
+        }),
+      ),
       { relevant: 0.5 },
     )
     expect(v.decision).toBe('surface')
   })
 
   it('skips when relevant is missing', () => {
-    expect(decide(bookmark, {}, { relevant: 0.0 }).decision).toBe('skip')
+    expect(decide(bookmark, res({}), { relevant: 0.0 }).decision).toBe('skip')
   })
 
   it('skips when relevant has the wrong type', () => {
     const wrong: JevAnswers = {
       relevant: { type: 'choice', choice: 'yes', confidence: 1, probabilities: { yes: 1 } },
     }
-    expect(decide(bookmark, wrong, { relevant: 0.0 }).decision).toBe('skip')
+    expect(decide(bookmark, res(wrong), { relevant: 0.0 }).decision).toBe('skip')
   })
 
-  it('keeps every answer on the verdict untouched', () => {
+  it('keeps every answer on the verdict untouched and records the model', () => {
     const a = answers(0.8, { some_future_question: { type: 'noul', noul: 0.3 } })
-    expect(decide(bookmark, a, { relevant: 0.5 }).answers).toBe(a)
+    const v = decide(bookmark, { model: 'jev-9.9.9', answers: a }, { relevant: 0.5 })
+    expect(v.answers).toBe(a)
+    expect(v.model).toBe('jev-9.9.9')
   })
 })
 
@@ -68,6 +74,7 @@ describe('rank', () => {
   const v = (id: string, relevant: number, actionable?: number): Verdict => ({
     bookmark: { ...bookmark, id },
     answers: answers(relevant, actionable === undefined ? {} : { actionable: { type: 'noul', noul: actionable } }),
+    model: 'jev-1.13.0',
     decision: 'surface',
   })
 

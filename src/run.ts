@@ -55,7 +55,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
       const res = await opts.jev.ask(buildState(interests, bookmark), QUESTIONS)
       usage.input_tokens += res.usage?.input_tokens ?? 0
       usage.output_tokens += res.usage?.output_tokens ?? 0
-      verdicts.push(decide(bookmark, res.answers, opts.thresholds))
+      verdicts.push(decide(bookmark, res, opts.thresholds))
     } catch (err) {
       failed++
       opts.onError?.(bookmark, err)

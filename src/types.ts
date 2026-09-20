@@ -116,6 +116,8 @@ export type Verdict = {
   bookmark: Bookmark
   /** Every answer Jev returned, probabilities intact, so a decision can be traced later. */
   answers: JevAnswers
+  /** The model ID Jev reported, e.g. `jev-1.13.0`; versioned even when an alias was requested. */
+  model: string
   decision: Decision
 }
 

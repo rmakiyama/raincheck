@@ -111,9 +111,10 @@ async function main(): Promise<number> {
   })
 
   const surfaced = result.verdicts.filter((v) => v.decision === 'surface').length
+  const models = [...new Set(result.verdicts.map((v) => v.model))].join(',') || '-'
   process.stderr.write(
     `judged ${result.verdicts.length}, surfaced ${surfaced}, failed ${result.failed}, ` +
-      `tokens in=${result.usage.input_tokens} out=${result.usage.output_tokens}\n`,
+      `model=${models}, tokens in=${result.usage.input_tokens} out=${result.usage.output_tokens}\n`,
   )
   if (result.sourceError !== undefined) {
     process.stderr.write(`raincheck: source stopped early: ${describe(result.sourceError)}\n`)

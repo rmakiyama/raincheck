@@ -68,6 +68,7 @@ describe('run', () => {
     })
     expect(sink.got.map((v) => v.bookmark.id)).toEqual(['raindrop:0', 'raindrop:1', 'raindrop:2'])
     expect(sink.got.map((v) => v.decision)).toEqual(['surface', 'surface', 'skip'])
+    expect(sink.got.map((v) => v.model)).toEqual(['jev-1.13.0', 'jev-1.13.0', 'jev-1.13.0'])
     expect(result.usage).toEqual({ input_tokens: 300, output_tokens: 30 })
     expect(result.failed).toBe(0)
   })
@@ -153,6 +154,7 @@ describe('sinks', () => {
   const v = (n: number, decision: Verdict['decision']): Verdict => ({
     bookmark: bookmark(n),
     answers: fixture.answers as JevAnswers,
+    model: fixture.model,
     decision,
   })
 
