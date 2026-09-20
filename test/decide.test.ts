@@ -92,9 +92,19 @@ describe('consulted', () => {
     expect(consulted(w, at('http://www.docs.example.com/cookbooks/a/#setup'))).toBe(true)
   })
 
-  it('is false for a different page on the same site or no URL at all', () => {
+  it('matches whole URLs pasted before punctuation', () => {
+    expect(consulted(work('読んで: https://docs.example.com/cookbooks/a。あとで'), at('https://docs.example.com/cookbooks/a'))).toBe(true)
+    expect(consulted(work('see (https://docs.example.com/cookbooks/a), then'), at('https://docs.example.com/cookbooks/a'))).toBe(true)
+    expect(consulted(work('see https://docs.example.com/cookbooks/a.'), at('https://docs.example.com/cookbooks/a'))).toBe(true)
+  })
+
+  it('is false for a different page, a page under the bookmark, a longer host, or no URL at all', () => {
     const w = work('read https://docs.example.com/cookbooks/a/ please')
     expect(consulted(w, at('https://docs.example.com/cookbooks/b'))).toBe(false)
+    expect(consulted(w, at('https://docs.example.com/cookbooks'))).toBe(false)
+    expect(consulted(w, at('https://docs.example.com'))).toBe(false)
+    expect(consulted(work('read https://xdocs.example.com/cookbooks/a'), at('https://docs.example.com/cookbooks/a'))).toBe(false)
+    expect(consulted(work('read https://docs.example.com/cookbooks/abc'), at('https://docs.example.com/cookbooks/a'))).toBe(false)
     expect(consulted(work('nothing here'), at('https://docs.example.com/cookbooks/a'))).toBe(false)
   })
 })

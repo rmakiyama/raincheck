@@ -4,21 +4,29 @@ import type { Decision, Bookmark, JevAnswers, JevResponse, RecentWork, Verdict }
 /**
  * Pure. True when a prompt in `recentWork` contains the bookmark's URL: the
  * person has already brought the article into their work, so suggesting it
- * again is noise. Scheme, `www.`, a trailing slash, and a fragment are
- * ignored on both sides.
+ * again is noise. Whole URLs are compared, ignoring scheme, `www.`, a
+ * trailing slash, a fragment, and case; a page under the bookmarked URL is
+ * not a match.
  */
 export function consulted(recentWork: RecentWork, bookmark: Bookmark): boolean {
-  const url = bareUrl(bookmark.url)
-  if (!url) return false
-  return recentWork.projects.some((p) => p.prompts.some((text) => bareUrl(text).includes(url)))
+  const target = bareUrl(bookmark.url)
+  return recentWork.projects.some((p) => p.prompts.some((text) => urlsIn(text).some((u) => bareUrl(u) === target)))
 }
 
-function bareUrl(text: string): string {
-  return text
+// Stops at whitespace, brackets, quotes, and Japanese punctuation, then drops
+// the sentence punctuation a URL is often pasted right in front of.
+const URL_TOKEN = /https?:\/\/[^\s<>"'()\[\]{}。、（）「」]+/g
+
+function urlsIn(text: string): string[] {
+  return (text.match(URL_TOKEN) ?? []).map((u) => u.replace(/[.,;:!?]+$/, ''))
+}
+
+function bareUrl(url: string): string {
+  return url
     .toLowerCase()
-    .replace(/https?:\/\/(www\.)?/g, '')
-    .replace(/#[^\s]*/g, '')
-    .replace(/\/(?=\s|$)/g, '')
+    .replace(/^https?:\/\/(www\.)?/, '')
+    .replace(/#.*$/, '')
+    .replace(/\/$/, '')
 }
 
 /** Pure. `res.answers` is stored on the verdict as-is, not copied. */

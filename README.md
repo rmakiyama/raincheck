@@ -101,7 +101,7 @@ raincheck context
 
 The bookmark's title, description, your note, your highlights, tags, and domain. The URL and the saved date are not sent.
 
-A bookmark whose URL appears in one of your prompts is treated as already read: it is not sent to Jev and is excluded as `consulted`.
+A bookmark whose URL appears in a prompt kept in the digest (what `raincheck context` shows) is treated as already read: it is not sent to Jev and is excluded as `consulted`.
 
 ## Questions
 
