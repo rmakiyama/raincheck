@@ -27,7 +27,7 @@ const recentWork: RecentWork = {
 }
 const interests = { name: 'stub', load: async () => recentWork }
 
-// Answers distance = 2 - 0.8n, effect = 1: n=0 → helps (2.0), n=1 → related (1.2), n=2 → skip (0.4).
+// Answers put all of distance on level 2 - n (n=0 → helps, n=1 → related, n=2 → skip) and effect on level 1.
 const jevByTitle = (fail: number[] = []): JevAsker & { states: unknown[]; inFlight: number; peak: number } => {
   const asker = {
     states: [] as unknown[],
@@ -42,8 +42,14 @@ const jevByTitle = (fail: number[] = []): JevAsker & { states: unknown[]; inFlig
       asker.states.push(state)
       const n = Number(/Article (\d+)/.exec((state as { article: { title: string } }).article.title)![1])
       if (fail.includes(n)) throw new Error(`boom ${n}`)
-      const scored = (s: number) => ({ type: 'score' as const, score: s, confidence: 1, legend: {}, probabilities: {} })
-      const answers: JevAnswers = { ...(fixture.answers as JevAnswers), distance: scored(2 - 0.8 * n), effect: scored(1) }
+      const on = (lvl: number) => ({
+        type: 'score' as const,
+        score: lvl,
+        confidence: 1,
+        legend: {},
+        probabilities: { '0': 0, '1': 0, '2': 0, [String(lvl)]: 1 },
+      })
+      const answers: JevAnswers = { ...(fixture.answers as JevAnswers), distance: on(Math.max(0, 2 - n)), effect: on(1) }
       return { model: 'jev-1.13.0', answers, usage: { input_tokens: 100, output_tokens: 10 } }
     },
   }

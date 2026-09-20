@@ -10,37 +10,40 @@ const bookmark: Bookmark = {
   savedAt: '2026-09-10T00:00:00.000Z',
 }
 
-const score = (s: number, top = 2): JevAnswer => ({
+/** A Score answer from its per-level probabilities; `score` is their mean, as Jev computes it. */
+const score = (...p: number[]): JevAnswer => ({
   type: 'score',
-  score: s,
+  score: p.reduce((sum, x, i) => sum + x * i, 0),
   confidence: 1,
   legend: {},
-  probabilities: {},
+  probabilities: Object.fromEntries(p.map((x, i) => [String(i), x])),
 })
-const answers = (distance: number, effect: number): JevAnswers => ({ distance: score(distance), effect: score(effect) })
+const answers = (distance: JevAnswer, effect: JevAnswer): JevAnswers => ({ distance, effect })
 const res = (answers: JevAnswers) => ({ model: 'jev-1.13.0', answers })
 
 describe('decide', () => {
-  it('reads the outcome table by the nearest level of distance and effect', () => {
-    expect(decide(bookmark, res(answers(2.0, 1.0))).decision).toBe('helps')
-    expect(decide(bookmark, res(answers(1.6, 0.9))).decision).toBe('helps')
-    expect(decide(bookmark, res(answers(1.4, 1.0))).decision).toBe('related')
-    expect(decide(bookmark, res(answers(1.0, 2.0))).decision).toBe('related')
-    expect(decide(bookmark, res(answers(2.0, 0.4))).decision).toBe('skip')
-    expect(decide(bookmark, res(answers(0.4, 2.0))).decision).toBe('skip')
+  it('reads the outcome table by the most likely level of distance and effect', () => {
+    expect(decide(bookmark, res(answers(score(0, 0.1, 0.9), score(0.2, 0.7, 0.1)))).decision).toBe('helps')
+    expect(decide(bookmark, res(answers(score(0, 0.6, 0.4), score(0.2, 0.7, 0.1)))).decision).toBe('related')
+    expect(decide(bookmark, res(answers(score(0, 0.6, 0.4), score(0.1, 0.1, 0.8)))).decision).toBe('related')
+    expect(decide(bookmark, res(answers(score(0, 0.1, 0.9), score(0.8, 0.2, 0)))).decision).toBe('skip')
+    expect(decide(bookmark, res(answers(score(0.9, 0.1, 0), score(0.1, 0.1, 0.8)))).decision).toBe('skip')
   })
 
-  it('rounds halves up, as the cookbook does', () => {
-    expect(decide(bookmark, res(answers(1.5, 0.5))).decision).toBe('helps')
+  it('does not let an even split promote an article: the mean would round up, the most likely level does not', () => {
+    const torn = score(0.01, 0.51, 0.48) // mean 1.47; a run at 0.49/0.51 would round to 2
+    expect(decide(bookmark, res(answers(torn, score(0.3, 0.6, 0.1)))).decision).toBe('related')
+    expect(decide(bookmark, res(answers(score(0, 0.5, 0.5), score(0.3, 0.6, 0.1)))).decision).toBe('related')
   })
 
-  it('skips when a deciding answer is missing or not a score', () => {
-    expect(decide(bookmark, res({ distance: score(2) })).decision).toBe('skip')
-    expect(decide(bookmark, res({ ...answers(2, 2), effect: { type: 'noul', noul: 1 } })).decision).toBe('skip')
+  it('skips when a deciding answer is missing, not a score, or lacks a level probability', () => {
+    expect(decide(bookmark, res({ distance: score(0, 0.1, 0.9) })).decision).toBe('skip')
+    expect(decide(bookmark, res({ ...answers(score(0, 0.1, 0.9), score(0, 0.1, 0.9)), effect: { type: 'noul', noul: 1 } })).decision).toBe('skip')
+    expect(decide(bookmark, res(answers(score(0, 0.1, 0.9), score(0.2, 0.8)))).decision).toBe('skip')
   })
 
   it('keeps every answer on the verdict untouched and records the model', () => {
-    const a = { ...answers(2, 1), some_future_question: { type: 'noul', noul: 0.3 } as JevAnswer }
+    const a = { ...answers(score(0, 0.1, 0.9), score(0.2, 0.7, 0.1)), some_future_question: { type: 'noul', noul: 0.3 } as JevAnswer }
     const v = decide(bookmark, { model: 'jev-9.9.9', answers: a })
     expect(v.answers).toBe(a)
     expect(v.model).toBe('jev-9.9.9')
@@ -48,16 +51,17 @@ describe('decide', () => {
 })
 
 describe('level', () => {
-  it('never exceeds the top level even if the score does', () => {
-    expect(level({ depth: score(3.4) }, 'depth')).toBe(3)
-    expect(level({ depth: score(0.49) }, 'depth')).toBe(0)
+  it('picks the most likely level, the lower one on a tie', () => {
+    expect(level({ depth: score(0.1, 0.2, 0.3, 0.4) }, 'depth')).toBe(3)
+    expect(level({ depth: score(0.4, 0.4, 0.1, 0.1) }, 'depth')).toBe(0)
   })
 })
 
 describe('rank', () => {
+  const at = (mean: number): JevAnswer => ({ type: 'score', score: mean, confidence: 1, legend: {}, probabilities: {} })
   const v = (id: string, distance: number, effect: number): Verdict => ({
     bookmark: { ...bookmark, id },
-    answers: answers(distance, effect),
+    answers: answers(at(distance), at(effect)),
     model: 'jev-1.13.0',
     decision: 'helps',
   })

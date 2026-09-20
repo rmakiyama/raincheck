@@ -35,11 +35,23 @@ function decision(answers: JevAnswers): Decision {
   return OUTCOME[distance]![effect]!
 }
 
-/** The nearest level, as the entity-alignment cookbook rounds a Score; `undefined` when the answer is missing or not a Score. */
+/**
+ * The most likely level; on a tie the lower one, so doubt never promotes an
+ * article. Not the rounded `score`: an article the model splits evenly
+ * between two levels would cross into the upper one on some runs and not
+ * others. `undefined` when the answer is missing, not a Score, or lacks a
+ * probability for some level.
+ */
 export function level(answers: JevAnswers, id: keyof typeof QUESTIONS): number | undefined {
   const a = answers[id]
   if (a?.type !== 'score') return undefined
-  return Math.min(Math.round(a.score), QUESTIONS[id].criteria.length - 1)
+  let best: number | undefined
+  for (let i = 0; i < QUESTIONS[id].criteria.length; i++) {
+    const p = a.probabilities[String(i)]
+    if (p === undefined) return undefined
+    if (best === undefined || p > a.probabilities[String(best)]!) best = i
+  }
+  return best
 }
 
 /** `distance` descending, ties broken by `effect` descending. Returns a new array. */

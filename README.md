@@ -113,7 +113,7 @@ One request per bookmark, with three Score questions. The questions are independ
 | `effect` | not at all / a choice is informed / applied as is (how the current work would change after reading) | **the decision** |
 | `depth` | the title says it all / a short read / a sitting / hands-on (effort to get the value) | display only |
 
-`distance` and `effect` are each rounded to the nearest level and looked up in this table. There is no threshold.
+For `distance` and `effect` the most likely level is taken (the lower one on a tie) and looked up in this table. There is no threshold.
 
 | distance \ effect | not at all | a choice is informed | applied as is |
 | --- | --- | --- | --- |
