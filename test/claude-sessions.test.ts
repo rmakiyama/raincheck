@@ -113,6 +113,16 @@ describe('createClaudeSessionsInterestSource', () => {
     expect(out.projects[0]!.prompts).toEqual([LONG])
   })
 
+  it('keeps the words after an attached reminder or IDE block, drops a bare one', async () => {
+    await session('p', 'a', [
+      user(`<system-reminder>\nYou are operating in a git worktree.\nWorktree path: /x\n</system-reminder>\n\nFIRST ${LONG}`, 1),
+      user(`<ide_opened_file>src/a.ts</ide_opened_file>SECOND ${LONG}`, 2),
+      user('<system-reminder>\nThis conversation is now continuing in the Claude desktop app\n</system-reminder>', 3),
+    ])
+    const out = await load()
+    expect(out.projects[0]!.prompts).toEqual([`FIRST ${LONG}`, `SECOND ${LONG}`])
+  })
+
   it('deduplicates repeated prompts and orders newest first', async () => {
     await session('p', 'a', [user('FIRST ' + LONG, 3), user('SECOND ' + LONG, 1), user('FIRST ' + LONG, 2)])
     const out = await load()

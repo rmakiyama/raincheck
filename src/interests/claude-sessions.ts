@@ -212,6 +212,18 @@ export function isPlumbing(text: string): boolean {
   return PLUMBING.some((re) => re.test(text))
 }
 
+// Claude Code also attaches context to the person's own message inside the
+// same string: a worktree notice before the first prompt of a session, or the
+// file open in the IDE. Those blocks are closed tags, unlike the records above.
+const ATTACHED = [/<system-reminder>[\s\S]*?<\/system-reminder>/g, /<ide_[a-z_]+>[\s\S]*?<\/ide_[a-z_]+>/g]
+
+/** The person's words with Claude Code's attached context blocks removed. */
+export function stripAttached(text: string): string {
+  let out = text
+  for (const re of ATTACHED) out = out.replace(re, '')
+  return out
+}
+
 type Candidate = { at: number; project: string; text: string }
 
 /**
@@ -224,7 +236,7 @@ type Candidate = { at: number; project: string; text: string }
  */
 export function select(sessions: Session[], o: SelectOptions): RecentWork {
   const raw: Candidate[] = sessions.flatMap((s) =>
-    s.prompts.map((p) => ({ at: p.at, project: s.project, text: normalize(p.text) })),
+    s.prompts.map((p) => ({ at: p.at, project: s.project, text: normalize(stripAttached(p.text)) })),
   )
   raw.sort((a, b) => b.at - a.at)
 
